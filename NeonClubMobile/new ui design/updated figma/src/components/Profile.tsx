@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Alert } from 'react-native';
 import { ChevronRight, User, Bell, Lock, HelpCircle, FileText, LogOut, Edit, Mail, Phone, MapPin, Award, GraduationCap, Receipt, Share2, Gift as GiftIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -205,8 +206,8 @@ export function Profile({ onNavigate, profileIncomplete = false }: ProfileProps)
               <ChevronRight className="h-5 w-5 text-gray-400" />
             </button>
             <Separator />
-            <button 
-              onClick={() => alert('Privacy & Security settings - Coming soon')}
+            <button
+              onClick={() => Alert.alert('Coming Soon', 'Privacy & Security settings - Coming soon')}
               className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
             >
               <div className="flex items-center gap-3">
@@ -235,8 +236,8 @@ export function Profile({ onNavigate, profileIncomplete = false }: ProfileProps)
               <ChevronRight className="h-5 w-5 text-gray-400" />
             </button>
             <Separator />
-            <button 
-              onClick={() => alert('Terms & Conditions - Coming soon')}
+            <button
+              onClick={() => Alert.alert('Coming Soon', 'Terms & Conditions - Coming soon')}
               className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
             >
               <div className="flex items-center gap-3">
@@ -253,12 +254,25 @@ export function Profile({ onNavigate, profileIncomplete = false }: ProfileProps)
         {/* Logout */}
         <Card className="shadow-sm">
           <CardContent className="p-4">
-            <button 
+            <button
               onClick={() => {
-                if (confirm('Are you sure you want to logout?')) {
-                  localStorage.clear();
-                  window.location.reload();
-                }
+                Alert.alert(
+                  'Confirm Logout',
+                  'Are you sure you want to logout?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Logout',
+                      style: 'destructive',
+                      onPress: () => {
+                        localStorage.clear();
+                        // For React Native, you would typically navigate to login screen
+                        // Since this is a web component, we'll reload the page
+                        window.location.reload();
+                      }
+                    }
+                  ]
+                );
               }}
               className="w-full flex items-center justify-between text-red-600 hover:bg-red-50 p-2 rounded-xl transition-colors"
             >

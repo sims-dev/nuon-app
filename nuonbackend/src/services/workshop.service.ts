@@ -17,9 +17,29 @@ export class WorkshopService {
                 orderBy: { createdAt: 'desc' }
             });
 
+            const formatted = workshops.map(w => ({
+                _id: w.id.toString(),
+                id: w.id.toString(),
+                title: w.title,
+                slug: w.slug,
+                description: w.description,
+                startDate: w.startDate,
+                endDate: w.endDate,
+                coverImage: w.coverImage || null,
+                thumbnail: w.coverImage || null,
+                mentors: w.mentors,
+                tags: w.tags,
+                isPublished: w.isPublished,
+                createdBy: w.createdBy,
+                creator: w.creator,
+                createdAt: w.createdAt,
+                updatedAt: w.updatedAt,
+                raw: w
+            }));
+
             return {
                 success: true,
-                workshops
+                workshops: formatted
             };
         } catch (error) {
             console.error('Error fetching workshops:', error);
@@ -166,16 +186,19 @@ export class WorkshopService {
             });
 
             const formattedWorkshops = workshops.map(workshop => ({
-                _id: workshop.id,
+                _id: workshop.id.toString(),
+                id: workshop.id.toString(),
                 title: workshop.title,
                 description: workshop.description,
                 startDate: workshop.startDate,
                 endDate: workshop.endDate,
                 mentors: workshop.mentors,
-                coverImage: workshop.coverImage,
+                coverImage: workshop.coverImage || null,
+                thumbnail: workshop.coverImage || null,
                 isPublished: workshop.isPublished,
                 createdAt: workshop.createdAt,
-                updatedAt: workshop.updatedAt
+                updatedAt: workshop.updatedAt,
+                raw: workshop
             }));
 
             return {

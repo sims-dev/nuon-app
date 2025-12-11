@@ -29,8 +29,17 @@ export const AuthProvider = ({ children }) => {
       }
       loaded.current = true;
       try {
-        const token = await AsyncStorage.getItem('token');
-        const userStr = await AsyncStorage.getItem('user');
+        // Support both mobile ('token') and web-style ('accessToken') storage keys
+        let token = await AsyncStorage.getItem('token');
+        if (!token) {
+          token = await AsyncStorage.getItem('accessToken');
+        }
+        // user may be stored under 'user' (mobile) or 'profile' (older flows)
+        let userStr = await AsyncStorage.getItem('user');
+        if (!userStr) {
+          userStr = await AsyncStorage.getItem('profile');
+        }
+
         if (token && userStr) {
           const user = JSON.parse(userStr);
           setTokenState(token);
@@ -52,8 +61,9 @@ export const AuthProvider = ({ children }) => {
 
   const signIn = async (credentials) => {
     try {
-      const res = await api.post('/login', credentials);
-      const { token: tkn, user: usr } = res.data;
+      // Backend exposes auth under /api/auth/login and returns { accessToken, refreshToken, user }
+      const res = await api.post('/auth/login', credentials);
+      const { accessToken: tkn, user: usr } = res.data;
       // persist
       await AsyncStorage.setItem('token', tkn);
       await AsyncStorage.setItem('user', JSON.stringify(usr));

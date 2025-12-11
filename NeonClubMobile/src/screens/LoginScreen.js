@@ -34,15 +34,18 @@ const LoginScreen = () => {
 
     setLoading(true);
     try {
-      const response = await api.post('/login', { email, password });
-      const { token, user } = response.data;
+      // Call backend auth endpoint and persist `accessToken` under mobile key `token`
+      const response = await api.post('/auth/login', { email, password });
+      const { accessToken, user } = response.data;
+
+      const tokenToStore = accessToken || response.data.token;
 
       // Store token and user data
-      await AsyncStorage.setItem('token', token);
+      await AsyncStorage.setItem('token', tokenToStore);
       await AsyncStorage.setItem('user', JSON.stringify(user));
 
       // Update auth context
-      setToken(token);
+      setToken(tokenToStore);
       updateUser(user);
 
       Alert.alert('Success', 'Login successful!');

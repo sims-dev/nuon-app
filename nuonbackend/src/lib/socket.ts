@@ -10,8 +10,8 @@ export function initializeSocket(server: any): Server {
                 "http://localhost:5000",
                 "http://192.168.0.116:3000",
                 "http://192.168.0.116:3001",
-                "http://192.168.0.209:3000",
-                "http://192.168.0.209:5000",
+                "http://192.168.0.3:3000",
+                "http://192.168.0.3:5000",
             ],
             credentials: true
         }

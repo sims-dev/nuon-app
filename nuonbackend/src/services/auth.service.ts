@@ -35,6 +35,7 @@ export class AuthService {
     }
 
     async login(email: string, password: string): Promise<Record<string, unknown>> {
+        password = password.trim(); // Trim whitespace
         console.log('🔍 LOGIN DEBUG: Looking for user with email:', email.toLowerCase());
         const user = await this.prisma.user.findFirst({
             where: { email: email.toLowerCase() }
@@ -60,8 +61,14 @@ export class AuthService {
         }
 
         console.log('🔍 LOGIN DEBUG: Comparing password');
+        console.log('🔍 LOGIN DEBUG: Input password length:', password.length);
+        console.log('🔍 LOGIN DEBUG: Stored hash length:', user.password.length);
         const isValidPassword = await bcrypt.compare(password, user.password);
         console.log('🔍 LOGIN DEBUG: Password valid:', isValidPassword);
+        // Additional debug: check against default admin password
+        const defaultAdminPass = 'admin@123';
+        const isDefaultValid = await bcrypt.compare(defaultAdminPass, user.password);
+        console.log('🔍 LOGIN DEBUG: Default admin password valid:', isDefaultValid);
         if (!isValidPassword) {
             throw new HttpException(
                 { success: false, message: 'Invalid credentials' },
@@ -278,6 +285,66 @@ export class AuthService {
         };
     }
 
+    async getCurrentProfile(userId: bigint): Promise<Record<string, unknown>> {
+        // Reuse getProfile logic but ensure consistent response shape
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            throw new HttpException(
+                { success: false, message: 'User not found' },
+                HttpStatus.NOT_FOUND
+            );
+        }
+        return {
+            success: true,
+            user: {
+                _id: user.id.toString(),
+                id: user.id.toString(),
+                name: user.name,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                role: (user as any).userRole?.name || 'user',
+                specialization: user.specialization,
+                experience: user.experience,
+                location: user.location,
+                profilePicture: user.profilePicture || null,
+                isProfileComplete: user.isProfileComplete
+            }
+        };
+    }
+
+    async createOrUpdateProfile(userId: bigint, data: { name?: string; specialization?: string; experience?: number; location?: string; profilePicture?: string }): Promise<Record<string, unknown>> {
+        try {
+            const updated = await this.prisma.user.update({
+                where: { id: userId },
+                data: {
+                    name: data.name,
+                    specialization: data.specialization,
+                    experience: data.experience,
+                    location: data.location,
+                    profilePicture: data.profilePicture,
+                    isProfileComplete: true
+                }
+            });
+            return {
+                success: true,
+                message: 'Profile saved',
+                user: {
+                    _id: updated.id.toString(),
+                    id: updated.id.toString(),
+                    name: updated.name,
+                    email: updated.email,
+                    phoneNumber: updated.phoneNumber,
+                    profilePicture: updated.profilePicture
+                }
+            };
+        } catch (error) {
+            throw new HttpException(
+                { success: false, message: (error as Error).message },
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
     async getProfile(userId: bigint): Promise<Record<string, unknown>> {
         const user = await this.prisma.user.findUnique({
             where: { id: userId }
@@ -479,72 +546,7 @@ export class AuthService {
         };
     }
 
-    async getCurrentProfile(userId: bigint): Promise<Record<string, unknown>> {
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId }
-        });
 
-        if (!user) {
-            throw new HttpException(
-                { success: false, message: 'User not found' },
-                HttpStatus.NOT_FOUND
-            );
-        }
-
-        return {
-            success: true,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                phoneNumber: user.phoneNumber,
-                role: (user as any).userRole?.name || 'user',
-                specialization: user.specialization,
-                experience: user.experience,
-                organization: user.organization,
-                city: user.city,
-                state: user.state,
-                location: user.location,
-                isProfileComplete: user.isProfileComplete,
-                profilePicture: user.profilePicture
-            }
-        };
-    }
-
-    async createOrUpdateProfile(userId: bigint, data: {
-        name?: string;
-        specialization?: string;
-        experience?: number;
-        location?: string;
-    }): Promise<Record<string, unknown>> {
-        const user = await this.prisma.user.update({
-            where: { id: userId },
-            data: {
-                name: data.name,
-                specialization: data.specialization,
-                experience: data.experience,
-                location: data.location,
-                isProfileComplete: true
-            }
-        });
-
-        return {
-            success: true,
-            message: 'Profile updated successfully',
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                phoneNumber: user.phoneNumber,
-                role: (user as any).userRole?.name || 'user',
-                specialization: user.specialization,
-                experience: user.experience,
-                location: user.location,
-                isProfileComplete: user.isProfileComplete,
-                profilePicture: user.profilePicture
-            }
-        };
-    }
 
     async refresh(): Promise<{ status: string; accessToken: string }> {
         // TODO: Implement refresh token logic

@@ -16,9 +16,35 @@ export class EventService {
                 orderBy: { createdAt: 'desc' }
             });
 
+            // Format events for frontend compatibility
+            const formatted = events.map(ev => ({
+                _id: ev.id.toString(),
+                id: ev.id.toString(),
+                title: ev.title,
+                description: ev.description,
+                price: ev.price,
+                thumbnail: ev.imageUrl || ev.imageUrl || null,
+                imageUrl: ev.imageUrl || null,
+                date: ev.date,
+                time: ev.time,
+                duration: ev.duration,
+                capacity: ev.capacity,
+                registeredCount: ev.registeredCount,
+                seats: ev.capacity && ev.registeredCount != null ? ev.capacity - ev.registeredCount : null,
+                venueName: ev.venueName,
+                venueAddress: ev.venueAddress,
+                venueCity: ev.venueCity,
+                location: ev.venueName || ev.venueCity || ev.venueAddress || null,
+                category: (ev as any).category || (ev as any).type || 'event',
+                instructor: ev.instructor,
+                createdAt: ev.createdAt,
+                updatedAt: ev.updatedAt,
+                raw: ev
+            }));
+
             return {
                 success: true,
-                events
+                events: formatted
             };
         } catch (error) {
             throw new Error((error as Error).message);
@@ -40,9 +66,34 @@ export class EventService {
                 throw new Error('Event not found');
             }
 
+            const formatted = {
+                _id: event.id.toString(),
+                id: event.id.toString(),
+                title: event.title,
+                description: event.description,
+                price: event.price,
+                thumbnail: event.imageUrl || null,
+                imageUrl: event.imageUrl || null,
+                date: event.date,
+                time: event.time,
+                duration: event.duration,
+                capacity: event.capacity,
+                registeredCount: event.registeredCount,
+                seats: event.capacity && event.registeredCount != null ? event.capacity - event.registeredCount : null,
+                venueName: event.venueName,
+                venueAddress: event.venueAddress,
+                venueCity: event.venueCity,
+                location: event.venueName || event.venueCity || event.venueAddress || null,
+                category: (event as any).category || (event as any).type || 'event',
+                instructor: event.instructor,
+                createdAt: event.createdAt,
+                updatedAt: event.updatedAt,
+                raw: event
+            };
+
             return {
                 success: true,
-                event
+                event: formatted
             };
         } catch (error) {
             throw new Error((error as Error).message);

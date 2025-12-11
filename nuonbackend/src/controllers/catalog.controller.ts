@@ -8,7 +8,9 @@ export class CatalogController {
 
     @Get()
     async getCatalog(@Req() req: any): Promise<any> {
-        return this.catalogService.getCatalog();
+        const res = await this.catalogService.getCatalog();
+        // Return plain array for mobile frontend compatibility
+        return Array.isArray((res as any).items) ? (res as any).items : (res as any).items || [];
     }
 
     @Post()

@@ -139,46 +139,48 @@ const MentorsScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'browse' && styles.activeTab]}
-          onPress={() => setActiveTab('browse')}
-        >
-          <Text style={styles.tabText}>Browse Mentors</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'sessions' && styles.activeTab]}
-          onPress={() => setActiveTab('sessions')}
-        >
-          <Text style={styles.tabText}>My Sessions</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Content */}
       <ScrollView contentContainerStyle={styles.contentContainer}>
-        {activeTab === 'browse' ? (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={NEON_COLORS.neonBlue} />
+            <Text style={styles.loadingText}>Loading mentors...</Text>
+          </View>
+        ) : list.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No mentors available at the moment</Text>
+            <Text style={styles.emptySubtext}>Check back later for new mentors</Text>
+          </View>
+        ) : (
           <FlatList
             data={list}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id?.toString() || item._id?.toString()}
             renderItem={({ item }) => (
               <View style={styles.mentorCard}>
-                {item.image && <Image source={item.image} style={styles.mentorImage} />}
+                {item.profilePicture && (
+                  <Image source={{ uri: item.profilePicture }} style={styles.mentorImage} />
+                )}
                 <View style={styles.mentorDetails}>
-                  <Text style={styles.mentorName}>{item.name}</Text>
-                  <Text style={styles.mentorSpecialization}>{item.specialization}</Text>
-                  <Text style={styles.mentorExperience}>{item.experience}</Text>
-                  <Text style={styles.mentorRating}>⭐ {item.rating} | {item.sessionsCompleted} sessions</Text>
+                  <Text style={styles.mentorName}>{item.name || 'Mentor'}</Text>
+                  <Text style={styles.mentorSpecialization}>
+                    {item.specialization || 'Nursing Professional'}
+                  </Text>
+                  <Text style={styles.mentorExperience}>
+                    {item.experience ? `${item.experience} years` : 'Experienced Professional'}
+                  </Text>
+                  <Text style={styles.mentorRating}>
+                    ⭐ {item.rating || 4.5} | {item.sessionsCompleted || 0} sessions
+                  </Text>
                   <View style={styles.buttonContainer}>
                     <TouchableOpacity
                       style={styles.button}
-                      onPress={() => navigation.navigate('MentorDetail', { mentor: item })}
+                      onPress={() => navigation.navigate('MentorProfile', { mentor: item })}
                     >
                       <Text style={styles.buttonText}>View Profile</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.button, styles.bookButton]}
-                      onPress={() => navigation.navigate('BookSession', { mentor: item })}
+                      onPress={() => navigation.navigate('MentorAvailability', { mentor: item })}
                     >
                       <Text style={styles.buttonText}>Book Session</Text>
                     </TouchableOpacity>
@@ -188,8 +190,6 @@ const MentorsScreen = ({ navigation }) => {
             )}
             contentContainerStyle={styles.listContainer}
           />
-        ) : (
-          <Text style={styles.noSessionsText}>No upcoming sessions</Text>
         )}
       </ScrollView>
     </View>
@@ -310,6 +310,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#94A3B8',
     padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#64748B',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });
 

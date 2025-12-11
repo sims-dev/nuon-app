@@ -24,6 +24,7 @@ import { ConferenceModule } from './modules/conference.module';
 import { AdminContentModule } from './modules/admin-content.module';
 import { ActivitiesModule } from './modules/activities.module';
 import { DashboardModule } from './modules/dashboard.module';
+import { EngageModule } from './modules/engage.module';
 
 @Module({
     imports: [
@@ -48,7 +49,8 @@ import { DashboardModule } from './modules/dashboard.module';
         ConferenceModule,
         AdminContentModule,
         ActivitiesModule,
-        DashboardModule
+        DashboardModule,
+        EngageModule
     ],
     controllers: [AppController],
     providers: [AppService, PrismaService]

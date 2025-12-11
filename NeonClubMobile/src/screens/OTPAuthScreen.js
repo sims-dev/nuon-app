@@ -95,13 +95,9 @@ const OTPAuthScreen = () => {
       }
       const resp = await api.post(endpoint, body, { timeout: 5000, headers: { 'x-otp-session': session } });
 
-      // Use the actual OTP from backend response if present
-      const backendOTP = resp?.data?.debugOtp;
-      if (backendOTP) {
-        setOtp(backendOTP);
-      }
-      console.log('OTP sent successfully, debugOtp:', backendOTP);
-      if (__DEV__) console.log('Using backend OTP, response mode:', resp?.data?.mode, 'debugOtp:', backendOTP);
+      // Removed automatic OTP setting - user must enter dummy OTP manually
+      console.log('OTP sent successfully');
+      if (__DEV__) console.log('OTP sent, user must enter manually');
       setStep('verify');
       setResendTimer(60);
       startResendTimer();
@@ -171,12 +167,15 @@ const OTPAuthScreen = () => {
         try { await registerPushTokenIfAvailable(); } catch {}
       }
       
-      // Navigate based on whether user is new or existing
-      if (isNewUser) {
-        // New user, complete profile
+      // Navigate based on whether user is new or has incomplete profile
+      console.log('[DEBUG] OTP Verification - Navigation decision:', { isNewUser, user: user?.name, profileIncomplete: user?.profileIncomplete });
+      if (isNewUser || user?.profileIncomplete) {
+        // New user or existing user with incomplete profile, complete profile
+        console.log('[DEBUG] Navigating to ProfileSetup for new user or incomplete profile');
         navigation.navigate('ProfileSetup', { user, token, isNewUser });
       } else {
-        // Existing user, go to dashboard
+        // Existing user with complete profile, go to dashboard
+        console.log('[DEBUG] Navigating to Main for existing user');
         setTimeout(() => {
           navigation.dispatch(CommonActions.reset({
             index: 0,

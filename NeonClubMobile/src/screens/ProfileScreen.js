@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { CommonActions } from '@react-navigation/native';
@@ -96,23 +97,40 @@ const ProfileScreen = ({ navigation }) => {
     const [myCourses, setMyCourses] = useState([]);
     const [nccStatus, setNCCStatus] = useState(null);
     const [loading, setLoading] = useState(false); // Start with false to show profile immediately
+    const [showIncompleteModal, setShowIncompleteModal] = useState(false);
 
-   const { user: authUser, signOut, updateUser } = useContext(AuthContext);
+    const { user: authUser, signOut, updateUser } = useContext(AuthContext);
 
    useEffect(() => {
+     console.log('[ProfileScreen] useEffect triggered, authUser:', authUser);
      // Set user immediately from context to reduce loading time
      if (authUser) {
+       console.log('[ProfileScreen] Setting user from auth context:', authUser);
        setUser(authUser);
+
+       // Show incomplete profile modal if needed
+       if (authUser.profileIncomplete) {
+         setShowIncompleteModal(true);
+       }
+     } else {
+       console.log('[ProfileScreen] No authUser in context');
      }
 
      // Fetch additional data in background
      const fetchAdditionalData = async () => {
        try {
+         console.log('[ProfileScreen] Starting fetchAdditionalData');
          const [coursesSettled, nccSettled, profileSettled] = await Promise.allSettled([
            api.get('/courses/my/courses', { timeout: 6000 }).catch(() => ({ data: [] })),
            api.get('/ncc', { timeout: 6000 }).catch(() => ({ data: null })),
            api.get('/profile', { timeout: 6000 })
          ]);
+
+         console.log('[ProfileScreen] API calls settled:', {
+           courses: coursesSettled.status,
+           ncc: nccSettled.status,
+           profile: profileSettled.status
+         });
 
          if (coursesSettled.status === 'fulfilled') {
            const list = (coursesSettled.value?.data?.courses || coursesSettled.value?.data || []);
@@ -128,19 +146,21 @@ const ProfileScreen = ({ navigation }) => {
          }
 
          if (profileSettled.status === 'fulfilled') {
+           console.log('[ProfileScreen] Profile API success:', profileSettled.value?.data);
            const profileData = profileSettled.value?.data?.profile || authUser;
            setUser(profileData);
            // Update auth context if profile data changed
            if (profileData && JSON.stringify(profileData) !== JSON.stringify(authUser)) {
              updateUser(profileData);
            }
-         } else if (profileSettled.reason?.response?.status === 401) {
-           setUser(null);
          } else {
-           setUser(authUser || null);
+           console.log('[ProfileScreen] Profile API failed:', profileSettled.reason);
+           // Don't set user to null on API failure - keep the authUser if available
+           // This prevents showing login prompt when user is actually authenticated
+           console.log('[ProfileScreen] Keeping existing user data despite API failure');
          }
        } catch (error) {
-         console.error('Profile error:', error);
+         console.error('[ProfileScreen] Profile error:', error);
          setUser(authUser || null);
        }
      };
@@ -190,21 +210,13 @@ const ProfileScreen = ({ navigation }) => {
     );
   }
 
-  if (!user) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Unable to load profile. Please login again.</Text>
-        <TouchableOpacity style={styles.browseButton} onPress={handleLogout}>
-          <Text style={styles.browseButtonText}>Go to Login</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  // Don't show login prompt - always show profile UI
+  // User data will be loaded from context or API
 
   return (
     <ScrollView style={styles.container}>
-      {/* Profile Header with contact card, styled per design */}
-      <LinearGradient colors={['#2563EB', '#1D4ED8', '#1E40AF']} style={styles.profileHeader}>
+      {/* Profile Header with primary color gradient */}
+      <LinearGradient colors={['#9333EA', '#7C3AED', '#4F46E5']} style={styles.profileHeader}>
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <SvgXml xml={chevronLeftSvg} width={20} height={20} color="#FFFFFF" />
@@ -253,20 +265,20 @@ const ProfileScreen = ({ navigation }) => {
 
       
 
-      {/* Stats - Modern Cards */}
+      {/* Stats - Modern Cards with Gradients */}
       <View style={styles.statsContainer}>
-        <View style={[styles.statTile, styles.purpleGradient, styles.coursesCard]}>
-          <Text style={[styles.statNumber, styles.purpleText]}>{myCourses.length}</Text>
+        <LinearGradient colors={['#F3E8FF', '#E9D5FF']} style={[styles.statTile, styles.coursesCard]}>
+          <Text style={[styles.statNumber, { color: '#7C3AED' }]}>{myCourses.length}</Text>
           <Text style={styles.statLabel}>Courses</Text>
-        </View>
-        <View style={[styles.statTile, styles.pinkGradient, styles.sessionsCard]}>
-          <Text style={[styles.statNumber, styles.pinkText]}>{user?.mentorshipSessions || 0}</Text>
+        </LinearGradient>
+        <LinearGradient colors={['#FCE7F3', '#FBCFE8']} style={[styles.statTile, styles.sessionsCard]}>
+          <Text style={[styles.statNumber, { color: '#DB2777' }]}>{user?.mentorshipSessions || 0}</Text>
           <Text style={styles.statLabel}>Sessions</Text>
-        </View>
-        <View style={[styles.statTile, styles.orangeGradient, styles.workshopsCard]}>
-          <Text style={[styles.statNumber, styles.orangeText]}>{user?.workshopsCount || 0}</Text>
+        </LinearGradient>
+        <LinearGradient colors={['#FFF7ED', '#FED7AA']} style={[styles.statTile, styles.workshopsCard]}>
+          <Text style={[styles.statNumber, { color: '#EA580C' }]}>{user?.workshopsCount || 0}</Text>
           <Text style={styles.statLabel}>Workshops</Text>
-        </View>
+        </LinearGradient>
       </View>
 
       {/* Divider */}
@@ -290,8 +302,42 @@ const ProfileScreen = ({ navigation }) => {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Neon Club v1.0.0</Text>
+        <Text style={styles.footerText}>Neon Club v2.0.0</Text>
       </View>
+
+      {/* Incomplete Profile Modal */}
+      <Modal
+        visible={showIncompleteModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowIncompleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Complete Your Profile</Text>
+            <Text style={styles.modalMessage}>
+              Your professional information is incomplete. Complete your profile to unlock all features and get the best experience.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.laterButton]}
+                onPress={() => setShowIncompleteModal(false)}
+              >
+                <Text style={styles.laterButtonText}>Later</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.completeButton]}
+                onPress={() => {
+                  setShowIncompleteModal(false);
+                  navigation.navigate('ProfileEdit');
+                }}
+              >
+                <Text style={styles.completeButtonText}>Complete Now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -539,15 +585,6 @@ const styles = StyleSheet.create({
     elevation: 8,
     borderWidth: 0,
   },
-  purpleGradient: {
-    backgroundColor: '#F3E8FF',
-  },
-  pinkGradient: {
-    backgroundColor: '#FCE7F3',
-  },
-  orangeGradient: {
-    backgroundColor: '#FFF7ED',
-  },
   coursesCard: {
     flex: 0.4,
   },
@@ -675,6 +712,69 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 6,
+  },
+  laterButton: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  completeButton: {
+    backgroundColor: '#3B82F6',
+  },
+  laterButtonText: {
+    color: '#6B7280',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  completeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   orderHistoryCard: {
     flexDirection: 'row',

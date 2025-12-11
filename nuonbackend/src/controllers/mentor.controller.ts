@@ -221,10 +221,9 @@ export class MentorController {
     // User endpoints for booking
     @Post('book')
     @UseGuards(JwtAuthGuard)
-    async bookMentorSession(@Body() body: { availabilityId: string; notes?: string }): Promise<any> {
+    async bookMentorSession(@Req() req: any, @Body() body: { availabilityId: string; notes?: string }): Promise<any> {
         try {
-            // TODO: Get user from JWT
-            const userId = BigInt(1); // Placeholder
+            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
             return await this.mentorService.bookMentorSession(userId, body);
         } catch (error) {
             throw new HttpException(
@@ -236,10 +235,9 @@ export class MentorController {
 
     @Get('my-bookings')
     @UseGuards(JwtAuthGuard)
-    async getMyBookings(): Promise<any> {
+    async getMyBookings(@Req() req: any): Promise<any> {
         try {
-            // TODO: Get user from JWT
-            const userId = BigInt(1); // Placeholder
+            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
             return await this.mentorService.getMyBookings(userId);
         } catch (error) {
             throw new HttpException(
@@ -251,10 +249,9 @@ export class MentorController {
 
     @Post('apply')
     @UseGuards(JwtAuthGuard)
-    async applyForMentor(@Body() body: any): Promise<any> {
+    async applyForMentor(@Req() req: any, @Body() body: any): Promise<any> {
         try {
-            // TODO: Get user from JWT
-            const userId = BigInt(1); // Placeholder
+            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
             return await this.mentorService.applyForMentor(userId, body);
         } catch (error) {
             throw new HttpException(

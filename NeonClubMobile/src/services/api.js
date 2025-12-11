@@ -184,7 +184,7 @@ api.interceptors.response.use(
 export const authAPI = {
   // Legacy methods (for backward compatibility)
   register: (userData) => api.post('/register', userData),
-  login: (credentials) => api.post('/login', credentials),
+  login: (credentials) => api.post('/auth/login', credentials),
   getProfile: () => api.get('/user/me'),
 
   // OTP Authentication
@@ -387,30 +387,27 @@ export const newsAPI = {
 
 // Mentor APIs
 export const mentorAPI = {
-  // Prefer public mentors endpoint; fall back to admin (will usually be blocked) but keep for compatibility
+  // Use the correct mentor endpoints that match backend routes
   getMentors: async () => {
     try {
-      const res = await cachedGet('/mentor/public/mentors');
+      const res = await cachedGet('/mentors');
       let list = Array.isArray(res?.data?.mentors) ? res.data.mentors : (Array.isArray(res?.data) ? res.data : []);
-      // No mock fallback; show empty state on UI if none
       return { data: list };
-    } catch {}
-    try {
-      const res = await cachedGet('/admin/users?role=mentor');
-      return { data: Array.isArray(res?.data) ? res.data : [] };
-    } catch {
+    } catch (error) {
+      console.error('Error fetching mentors:', error);
       return { data: [] };
     }
   },
-  getAvailability: (mentorId, params = {}) => api.get(`/mentor/${mentorId}/availability`, { params }),
-  bookMentorship: (mentorData) => api.post('/mentor/book', mentorData),
-  getMyBookings: () => api.get('/mentor/bookings/my'),
+  getMentor: (id) => api.get(`/mentors/${id}`),
+  getAvailability: (mentorId, params = {}) => api.get(`/mentors/${mentorId}/availability/public`, { params }),
+  bookMentorship: (mentorData) => api.post('/mentors/book', mentorData),
+  getMyBookings: () => api.get('/mentors/my-bookings'),
   apply: (data) => {
     // Allow both JSON and FormData. If FormData, don't force JSON content-type.
     if (typeof FormData !== 'undefined' && data instanceof FormData) {
-      return api.post('/mentor/apply', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return api.post('/mentors/apply', data, { headers: { 'Content-Type': 'multipart/form-data' } });
     }
-    return api.post('/mentor/apply', data);
+    return api.post('/mentors/apply', data);
   },
 };
 

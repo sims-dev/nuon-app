@@ -1,7 +1,8 @@
 // Centralized configuration for IP address used by the mobile app (local src copy)
 // Keep in sync with NeonClubMobile/config/ipConfig.js
-const IP_ADDRESS = '192.168.0.209'; // Updated to requested IP
+// Centralized configuration for IP address used by the mobile app
+// Set this to your machine's LAN IP so physical devices can reach the backend
+export const IP_ADDRESS = '192.168.0.209';
 
-module.exports = {
-  IP_ADDRESS,
-};
+// For environments that import via CommonJS
+module.exports = { IP_ADDRESS };

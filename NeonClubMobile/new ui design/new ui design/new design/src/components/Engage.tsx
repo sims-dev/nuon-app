@@ -26,11 +26,7 @@ import {
 } from "./ui/tabs";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
-interface EngageProps {
-  onNavigate: (page: string, data?: any) => void;
-}
-
-export function Engage({ onNavigate }: EngageProps) {
+export function Engage({ onNavigate }) {
   const [displayName, setDisplayName] = useState('Priya');
 
   useEffect(() => {
@@ -56,7 +52,8 @@ export function Engage({ onNavigate }: EngageProps) {
       points: 100,
       image:
         "https://images.unsplash.com/photo-1506126613408-eca07ce68773?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-      seats: 50,
+      capacity: 50,
+      enrolled: 12,
       category: "Mental Health",
     },
     {
@@ -70,7 +67,8 @@ export function Engage({ onNavigate }: EngageProps) {
       points: 150,
       image:
         "https://images.unsplash.com/photo-1545389336-cf090694435e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-      seats: 30,
+      capacity: 30,
+      enrolled: 8,
       category: "Mindfulness",
     },
     {
@@ -84,7 +82,8 @@ export function Engage({ onNavigate }: EngageProps) {
       points: 120,
       image:
         "https://images.unsplash.com/photo-1599901860904-17e6ed7083a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-      seats: 25,
+      capacity: 25,
+      enrolled: 15,
       category: "Self-Care",
     },
     {
@@ -98,7 +97,8 @@ export function Engage({ onNavigate }: EngageProps) {
       points: 200,
       image:
         "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-      seats: 100,
+      capacity: 100,
+      enrolled: 45,
       category: "Burnout Prevention",
     },
   ];
@@ -278,7 +278,7 @@ export function Engage({ onNavigate }: EngageProps) {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                     <Badge className="absolute top-3 right-3 bg-green-500">
-                      {program.seats} seats left
+                      {program.capacity - (program.enrolled || 0)} spots available
                     </Badge>
                     {program.price === 0 && (
                       <Badge className="absolute top-3 left-3 bg-blue-500">
@@ -308,6 +308,11 @@ export function Engage({ onNavigate }: EngageProps) {
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
+                        <p className="text-yellow-600">
+                          +{program.points} pts
+                        </p>
+                      </div>
+                      <div className="text-right">
                         {program.price === 0 ? (
                           <p className="text-green-600">Free</p>
                         ) : (
@@ -316,11 +321,6 @@ export function Engage({ onNavigate }: EngageProps) {
                             {program.price}
                           </p>
                         )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-yellow-600">
-                          +{program.points} pts
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -385,6 +385,11 @@ export function Engage({ onNavigate }: EngageProps) {
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
+                        <p className="text-yellow-600">
+                          +{activity.points} pts
+                        </p>
+                      </div>
+                      <div className="text-right">
                         {activity.price === 0 ? (
                           <p className="text-green-600">Free</p>
                         ) : (
@@ -393,11 +398,6 @@ export function Engage({ onNavigate }: EngageProps) {
                             {activity.price}
                           </p>
                         )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-yellow-600">
-                          +{activity.points} pts
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -463,6 +463,11 @@ export function Engage({ onNavigate }: EngageProps) {
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
+                        <p className="text-yellow-600">
+                          +{event.points} pts
+                        </p>
+                      </div>
+                      <div className="text-right">
                         {event.price === 0 ? (
                           <p className="text-green-600">Free</p>
                         ) : (
@@ -471,11 +476,6 @@ export function Engage({ onNavigate }: EngageProps) {
                             {event.price}
                           </p>
                         )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-yellow-600">
-                          +{event.points} pts
-                        </p>
                       </div>
                     </div>
                   </div>

@@ -10,9 +10,9 @@ const otpRequestLimits = new Map();
 const MAX_OTP_REQUESTS_PER_HOUR = 10;
 const MAX_OTP_REQUESTS_PER_DAY = 50;
 
-// Generate OTP
+// Generate OTP - Fixed to 123456 for testing
 const generateOTP = () => {
-    return crypto.randomInt(100000, 999999).toString();
+    return '123456';
 };
 
 // Check rate limits
@@ -263,6 +263,7 @@ export class OtpService {
                 user = await this.prisma.user.create({ data: userData });
                 isNewUser = true;
             }
+            // Existing users (even with incomplete profiles) go to main dashboard
 
             // Generate JWT token (simplified for now)
             const token = 'dummy-jwt-token'; // TODO: Implement proper JWT generation

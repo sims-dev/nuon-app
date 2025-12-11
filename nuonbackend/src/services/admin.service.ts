@@ -381,6 +381,7 @@ export class AdminService {
         }
     }
 
+
     async getMessages(mentorId: bigint): Promise<any> {
         try {
             // For now, return empty array since we're using real-time messaging
@@ -483,6 +484,244 @@ export class AdminService {
             });
 
             return { success: true, message: 'Mentor added successfully', mentor };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async getEngageActivities(options: { page: number; limit: number; category?: string }): Promise<any> {
+        try {
+            const { page, limit, category } = options;
+            const filter: any = {};
+
+            if (category) {
+                filter.category = category;
+            }
+
+            const [activities, total] = await Promise.all([
+                this.prisma.engageActivity.findMany({
+                    where: filter,
+                    skip: (page - 1) * limit,
+                    take: limit,
+                    orderBy: { createdAt: 'desc' },
+                    include: {
+                        instructor: { select: { id: true, name: true, email: true } },
+                        creator: { select: { id: true, name: true, email: true } }
+                    }
+                }),
+                this.prisma.engageActivity.count({ where: filter })
+            ]);
+
+            return { data: activities, total, page, limit };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async createEngageActivity(data: any, creatorId: bigint): Promise<any> {
+        try {
+            // Validate required fields
+            if (!data.title || data.title.trim() === '') {
+                throw new Error('Title is required');
+            }
+            if (!data.description || data.description.trim() === '') {
+                throw new Error('Description is required');
+            }
+            if (!data.category) {
+                throw new Error('Category is required');
+            }
+
+            // Parse and validate numeric fields from strings
+            const price = data.price ? parseFloat(data.price) : 0;
+            if (isNaN(price) || price < 0) {
+                throw new Error('Price must be a valid non-negative number');
+            }
+
+            const points = data.points ? parseInt(data.points, 10) : 0;
+            if (isNaN(points) || points < 0) {
+                throw new Error('Points must be a valid non-negative integer');
+            }
+
+            const capacity = data.capacity ? parseInt(data.capacity, 10) : 0;
+            if (isNaN(capacity) || capacity < 0) {
+                throw new Error('Capacity must be a valid non-negative integer');
+            }
+
+            const videoDuration = data.videoDuration ? parseInt(data.videoDuration, 10) : 0;
+            if (isNaN(videoDuration) || videoDuration < 0) {
+                throw new Error('Video duration must be a valid non-negative integer');
+            }
+
+            // Handle instructorId - convert empty strings to null
+            let instructorId = null;
+            if (data.instructorId && data.instructorId.trim() !== '') {
+                const parsedInstructorId = parseInt(data.instructorId, 10);
+                if (isNaN(parsedInstructorId)) {
+                    throw new Error('Instructor ID must be a valid number');
+                }
+                instructorId = BigInt(parsedInstructorId);
+            }
+
+            // Create parsed data without spreading original data to avoid overriding processed fields
+            const parsedData = {
+                title: data.title,
+                description: data.description,
+                category: data.category,
+                type: data.type,
+                date: data.date,
+                time: data.time,
+                duration: data.duration,
+                location: data.location,
+                price,
+                points,
+                capacity,
+                instructorName: data.instructorName,
+                instructorId,
+                videoUrl: data.videoUrl,
+                videoTitle: data.videoTitle,
+                videoQuality: data.videoQuality,
+                videoDuration,
+                videoThumbnail: data.videoThumbnail,
+                image: data.image,
+                thumbnail: data.thumbnail,
+                tags: data.tags,
+                creatorId,
+                registeredCount: 0,
+                status: 'active',
+                isActive: true
+            };
+
+            const activity = await this.prisma.engageActivity.create({
+                data: parsedData,
+                include: {
+                    instructor: { select: { id: true, name: true, email: true } },
+                    creator: { select: { id: true, name: true, email: true } }
+                }
+            });
+
+            return {
+                success: true,
+                message: 'Activity created successfully',
+                activity
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async updateEngageActivity(activityId: bigint, data: any): Promise<any> {
+        try {
+            // Validate fields if they are being updated
+            if (data.title !== undefined && (!data.title || data.title.trim() === '')) {
+                throw new Error('Title cannot be empty');
+            }
+            if (data.description !== undefined && (!data.description || data.description.trim() === '')) {
+                throw new Error('Description cannot be empty');
+            }
+
+            // Create parsed data object without spreading to avoid overriding processed fields
+            const parsedData: any = {};
+
+            // Assign non-numeric fields conditionally
+            if (data.title !== undefined) parsedData.title = data.title;
+            if (data.description !== undefined) parsedData.description = data.description;
+            if (data.category !== undefined) parsedData.category = data.category;
+            if (data.type !== undefined) parsedData.type = data.type;
+            if (data.date !== undefined) parsedData.date = data.date ? new Date(`${data.date}T00:00:00.000Z`) : null;
+            if (data.time !== undefined) parsedData.time = data.time;
+            if (data.duration !== undefined) parsedData.duration = data.duration;
+            if (data.location !== undefined) parsedData.location = data.location;
+            if (data.instructorName !== undefined) parsedData.instructorName = data.instructorName;
+            if (data.videoUrl !== undefined) parsedData.videoUrl = data.videoUrl;
+            if (data.videoTitle !== undefined) parsedData.videoTitle = data.videoTitle;
+            if (data.videoQuality !== undefined) parsedData.videoQuality = data.videoQuality;
+            if (data.videoThumbnail !== undefined) parsedData.videoThumbnail = data.videoThumbnail;
+            if (data.image !== undefined) parsedData.image = data.image;
+            if (data.thumbnail !== undefined) parsedData.thumbnail = data.thumbnail;
+            if (data.tags !== undefined) parsedData.tags = data.tags;
+            if (data.status !== undefined) parsedData.status = data.status;
+
+            if (data.price !== undefined) {
+                const price = parseFloat(data.price);
+                if (isNaN(price) || price < 0) {
+                    throw new Error('Price must be a valid non-negative number');
+                }
+                parsedData.price = price;
+            }
+
+            if (data.points !== undefined) {
+                const points = parseInt(data.points, 10);
+                if (isNaN(points) || points < 0) {
+                    throw new Error('Points must be a valid non-negative integer');
+                }
+                parsedData.points = points;
+            }
+
+            if (data.capacity !== undefined) {
+                const capacity = parseInt(data.capacity, 10);
+                if (isNaN(capacity) || capacity < 0) {
+                    throw new Error('Capacity must be a valid non-negative integer');
+                }
+                parsedData.capacity = capacity;
+            }
+
+            if (data.videoDuration !== undefined) {
+                const videoDuration = parseInt(data.videoDuration, 10);
+                if (isNaN(videoDuration) || videoDuration < 0) {
+                    throw new Error('Video duration must be a valid non-negative integer');
+                }
+                parsedData.videoDuration = videoDuration;
+            }
+
+            // Handle instructorId - convert empty strings to null
+            if (data.instructorId !== undefined) {
+                if (data.instructorId !== null && data.instructorId.trim() !== '') {
+                    const parsedInstructorId = parseInt(data.instructorId, 10);
+                    if (isNaN(parsedInstructorId)) {
+                        throw new Error('Instructor ID must be a valid number');
+                    }
+                    parsedData.instructorId = BigInt(parsedInstructorId);
+                } else {
+                    parsedData.instructorId = null;
+                }
+            }
+
+            // Remove undefined values
+            Object.keys(parsedData).forEach(key => {
+                if (parsedData[key] === undefined) {
+                    delete parsedData[key];
+                }
+            });
+
+            const activity = await this.prisma.engageActivity.update({
+                where: { id: activityId },
+                data: parsedData,
+                include: {
+                    instructor: { select: { id: true, name: true, email: true } },
+                    creator: { select: { id: true, name: true, email: true } }
+                }
+            });
+
+            return {
+                success: true,
+                message: 'Activity updated successfully',
+                activity
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async deleteEngageActivity(activityId: bigint): Promise<any> {
+        try {
+            await this.prisma.engageActivity.delete({
+                where: { id: activityId }
+            });
+
+            return {
+                success: true,
+                message: 'Activity deleted successfully'
+            };
         } catch (error) {
             throw new Error((error as Error).message);
         }

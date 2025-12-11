@@ -36,7 +36,8 @@ import {
   ExitToApp,
   Quiz,
   Message,
-  Send
+  Send,
+  EventNote
 } from '@mui/icons-material';
 
 // Import admin components
@@ -44,6 +45,7 @@ import UserManagement from '../../components/admin/UserManagement';
 import ContentManagement from '../../components/admin/ContentManagement';
 import AssessmentManagement from '../../components/admin/AssessmentManagement';
 import AnalyticsComponent from '../../components/admin/Analytics';
+import EngageActivityManagement from '../../components/admin/EngageActivityManagement';
 import io from 'socket.io-client';
 
 const drawerWidth = 240;
@@ -147,6 +149,7 @@ const AdminDashboard = () => {
     { id: 'dashboard', label: 'Dashboard', icon: <Dashboard /> },
     { id: 'users', label: 'User Management', icon: <People /> },
     { id: 'content', label: 'Content Management', icon: <VideoLibrary /> },
+      { id: 'engage', label: 'Engage Activities', icon: <EventNote /> },
     { id: 'assessments', label: 'Assessment Management', icon: <Quiz /> },
     { id: 'messaging', label: 'Mentor Messaging', icon: <Message /> },
     { id: 'analytics', label: 'Analytics', icon: <Analytics /> },
@@ -159,6 +162,8 @@ const AdminDashboard = () => {
         return <UserManagement />;
       case 'content':
         return <ContentManagement />;
+           case 'engage':
+             return <EngageActivityManagement />;
       case 'assessments':
         return <AssessmentManagement />;
       case 'messaging':

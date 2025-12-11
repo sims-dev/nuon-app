@@ -32,6 +32,8 @@ async function bootstrap(): Promise<void> {
         `http://localhost:5000`,
         `http://192.168.0.116:3000`,
         `http://192.168.0.116:3001`,
+        `http://192.168.0.3:3000`,
+        `http://192.168.0.3:5000`,
         `http://192.168.0.209:3000`,
         `http://192.168.0.209:5000`,
     ];
@@ -64,8 +66,8 @@ async function bootstrap(): Promise<void> {
     const server = app.getHttpServer();
     initializeSocket(server);
 
-    await app.listen(PORT);
-    console.log(`Server (with sockets) running on port ${PORT}`);
+    await app.listen(PORT, '0.0.0.0');
+    console.log(`Server (with sockets) running on port ${PORT} and listening on 0.0.0.0`);
 
     // Ensure an admin user exists on startup
     const appService = app.get(AppService);

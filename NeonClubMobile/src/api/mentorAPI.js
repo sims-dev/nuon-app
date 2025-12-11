@@ -1,7 +1,8 @@
 import { API_ENDPOINTS } from '../config/apiConfig';
+const { IP_ADDRESS } = require('../config/ipConfig');
 
-// Fallback IP address if config is not available
-const FALLBACK_BASE_URL = 'http://192.168.0.116:3000';
+// Fallback base URL (uses backend port 5000 and global /api prefix)
+const FALLBACK_BASE_URL = `http://${IP_ADDRESS || '192.168.0.116'}:5000/api`;
 
 class MentorAPI {
   getBaseUrl() {

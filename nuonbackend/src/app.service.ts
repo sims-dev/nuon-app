@@ -23,16 +23,7 @@ export class AppService {
             console.log('⏳ Checking for admin user...');
             const adminEmail = (process.env.ADMIN_EMAIL || 'admin@nuonhub.com').toLowerCase();
             const adminPassword = process.env.ADMIN_PASSWORD || 'admin@123';
-
-            // Remove old admin user if exists
-            await this.prisma.user.deleteMany({
-                where: { email: 'admin@neonclub.com' }
-            });
-
-            // Also remove the new admin if it exists to recreate it
-            await this.prisma.user.deleteMany({
-                where: { email: 'admin@nuonhub.com' }
-            });
+            console.log('🔑 Admin password from env or default:', adminPassword);
 
             // Find or create admin role
             let adminRole = await this.prisma.role.findFirst({
@@ -53,17 +44,29 @@ export class AppService {
                 select: {
                     id: true,
                     email: true,
-                    name: true
+                    name: true,
+                    password: true
                 }
             });
 
+            const hashedPassword = await bcrypt.hash(adminPassword, 10);
+
             if (existing) {
+                // Always update password to ensure it's correct
+                await this.prisma.user.update({
+                    where: { id: existing.id },
+                    data: {
+                        password: hashedPassword,
+                        role_id: Number(adminRole.id),
+                        active: true
+                    }
+                });
+                console.log('🔄 Admin password updated');
                 console.log('✅ Admin user exists:', adminEmail);
                 return;
             }
 
             // Create admin user
-            const hashedPassword = await bcrypt.hash(adminPassword, 10);
             const admin = await this.prisma.user.create({
                 data: {
                     name: 'System Administrator',

@@ -1,297 +1,330 @@
-// Helper to get full URL for uploads (always keep at the top, outside the component)
-import { CONFIG } from '../utils/config';
-const BASE_URL = (CONFIG.API_BASE_URL || '').replace(/\/api\/?$/i, '') || `http://${require('../config/ipConfig').IP_ADDRESS}:5000`;
-const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Image,
-} from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, ScrollView } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import api, { courseAPI, conferenceAPI, eventAPI, workshopAPI, activitiesAPI, mentorAPI } from '../services/api';
-import { LEARNING_HERO } from '../assets/heroImages';
+import { SvgXml } from 'react-native-svg';
+
+// SVG Icons
+const bookOpenSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`;
+const heartSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/></svg>`;
+const calendarSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>`;
+const usersSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
 
 const MyLearningScreen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState('courses');
-  const [courses, setCourses] = useState([]);
-  const [conferences, setConferences] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [workshops, setWorkshops] = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const enrolledCourses = [
+    {
+      id: 1,
+      title: 'Advanced Patient Care',
+      instructor: 'Dr. Sarah Johnson',
+      progress: 65,
+      status: 'In Progress',
+    },
+    {
+      id: 2,
+      title: 'Medication Management Basics',
+      instructor: 'Nurse Priya Singh',
+      progress: 100,
+      status: 'Completed',
+    },
+  ];
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [coursesRes, conferencesRes, eventsRes, workshopsRes, sessionsRes] = await Promise.all([
-        courseAPI.getMyCourses().catch(() => ({ data: {} })),
-        conferenceAPI.getMyConferences().catch(() => ({ data: {} })),
-        eventAPI.getMyEvents().catch(() => ({ data: {} })),
-        workshopAPI.getMyWorkshops().catch(() => ({ data: {} })),
-        mentorAPI.getMyBookings().catch(() => ({ data: {} })),
-      ]);
-      const cRaw = coursesRes?.data?.courses ?? coursesRes?.data ?? [];
-      const confRaw = conferencesRes?.data?.conferences ?? conferencesRes?.data ?? [];
-      const eRaw = eventsRes?.data?.events ?? eventsRes?.data ?? [];
-      const wRaw = workshopsRes?.data?.workshops ?? workshopsRes?.data ?? [];
-      const sRaw = sessionsRes?.data?.bookings ?? sessionsRes?.data ?? [];
-      setCourses(Array.isArray(cRaw) ? cRaw : []);
-      setConferences(Array.isArray(confRaw) ? confRaw : []);
-      setEvents(Array.isArray(eRaw) ? eRaw : []);
-      setWorkshops(Array.isArray(wRaw) ? wRaw : []);
-      setSessions(Array.isArray(sRaw) ? sRaw : []);
-    } catch (error) {
-      console.error('Error loading learning data:', error);
-    }
-    setLoading(false);
-  };
+  const enrolledWellness = [
+    {
+      id: 1,
+      title: 'Stress Management for Healthcare Workers',
+      type: 'Mental Wellness',
+      progress: 40,
+      status: 'Active',
+    },
+  ];
 
-  const getStatusText = (item) => {
-    if (item.completed) return 'Completed';
-    if (item.progress >= 100) return 'Completed';
-    if (item.status) return item.status;
-    return 'In Progress';
-  };
+  const registeredEvents = [
+    {
+      id: 1,
+      title: 'Healthcare Summit 2024',
+      date: '2024-10-18',
+      status: 'upcoming',
+    },
+  ];
 
-  const formatDateTime = (date, duration) => {
-    try {
-      const d = new Date(date);
-      const day = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      if (!duration) return day;
-      return `${day} • ${duration}`;
-    } catch {
-      return date;
-    }
-  };
-
-  const renderCourseItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.heroCard}
-      activeOpacity={0.9}
-      onPress={() => {
-        try { activitiesAPI.create({ type: 'course-open', title: item.title, ref: item._id }); } catch {}
-        navigation.navigate('CourseViewer', { course: item });
-      }}
-    >
-      <View style={styles.heroImageWrap}>
-        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.image) || LEARNING_HERO }} style={styles.heroImage} />
-        <View style={styles.heroOverlay} />
-        <View style={styles.statusPill}><Text style={styles.statusPillText}>{getStatusText(item)}</Text></View>
-        <Text style={styles.heroTitle} numberOfLines={1}>{item.title}</Text>
-      </View>
-      <View style={styles.heroProgressRow}>
-        <Text style={styles.progressLabel}>Your Progress</Text>
-        <Text style={styles.progressPct}>{(item.progress||0)}% Complete</Text>
-      </View>
-      <View style={styles.progressBarRich}><View style={[styles.progressFillRich, { width: `${item.progress||0}%` }]} /></View>
-      <View style={styles.nextLessonCard}>
-        <Text style={styles.nextLessonLabel}>Next Lesson</Text>
-        <Text style={styles.nextLessonTitle} numberOfLines={1}>{item.nextLesson || 'Lesson 16: Emergency Response'}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderWorkshopItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.heroCard}
-      activeOpacity={0.9}
-      onPress={() => navigation.navigate('WorkshopViewer', { workshop: { ...item, hasRegistered: true } })}
-    >
-      <View style={styles.heroImageWrap}>
-        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO }} style={styles.heroImage} />
-        <View style={styles.heroOverlay} />
-        <View style={styles.statusPill}><Text style={styles.statusPillText}>{getStatusText(item)}</Text></View>
-        <Text style={styles.heroTitle} numberOfLines={1}>{item.title}</Text>
-      </View>
-      <View style={styles.heroProgressRow}>
-        <Text style={styles.progressLabel}>Status</Text>
-        <Text style={styles.progressPct}>{getStatusText(item)}</Text>
-      </View>
-      <View style={styles.nextLessonCard}>
-        <Text style={styles.nextLessonLabel}>Date</Text>
-        <Text style={styles.nextLessonTitle} numberOfLines={1}>{formatDateTime(item.startDate || item.date, item.duration)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderConferenceItem = ({ item }) => (
-    <View style={styles.card}>
-      <TouchableOpacity
-        style={{ flex: 1 }}
-        onPress={() => navigation.navigate('ConferenceViewer', { conference: { ...item, hasRegistered: true } })}
-      >
-        <Text style={styles.cardTitle}>{item.title}</Text>
-        <Text style={styles.cardSubtitle}>{item.date ? new Date(item.date).toLocaleDateString() : 'TBA'} • {item.time || 'TBA'}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const renderEventItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.heroCard}
-      activeOpacity={0.9}
-      onPress={() => navigation.navigate('EventViewer', { event: { ...item, hasRegistered: true } })}
-    >
-      <View style={styles.heroImageWrap}>
-        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO }} style={styles.heroImage} />
-        <View style={styles.heroOverlay} />
-        <View style={styles.statusPill}><Text style={styles.statusPillText}>{getStatusText(item)}</Text></View>
-        <Text style={styles.heroTitle} numberOfLines={1}>{item.title}</Text>
-      </View>
-      <View style={styles.heroProgressRow}>
-        <Text style={styles.progressLabel}>Status</Text>
-        <Text style={styles.progressPct}>{getStatusText(item)}</Text>
-      </View>
-      <View style={styles.nextLessonCard}>
-        <Text style={styles.nextLessonLabel}>Date</Text>
-        <Text style={styles.nextLessonTitle} numberOfLines={1}>{formatDateTime(item.date, item.duration)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderSessionItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.heroCard}
-      activeOpacity={0.9}
-      onPress={() => navigation.navigate('SessionViewer', { session: item })}
-    >
-      <View style={styles.heroImageWrap}>
-        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO }} style={styles.heroImage} />
-        <View style={styles.heroOverlay} />
-        <View style={styles.statusPill}><Text style={styles.statusPillText}>{getStatusText(item)}</Text></View>
-        <Text style={styles.heroTitle} numberOfLines={1}>{item.title}</Text>
-      </View>
-      <View style={styles.heroProgressRow}>
-        <Text style={styles.progressLabel}>Status</Text>
-        <Text style={styles.progressPct}>{getStatusText(item)}</Text>
-      </View>
-      <View style={styles.nextLessonCard}>
-        <Text style={styles.nextLessonLabel}>Date</Text>
-        <Text style={styles.nextLessonTitle} numberOfLines={1}>{formatDateTime(item.date, item.duration)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const tabs = [
-    { key: 'courses', label: 'Courses' },
-    { key: 'conferences', label: 'Conferences' },
-    { key: 'workshops', label: 'Workshops' },
-    { key: 'events', label: 'Events' },
-    { key: 'sessions', label: 'Sessions' },
+  const registeredWorkshops = [
+    {
+      id: 1,
+      title: 'Wound Care Management Workshop',
+      date: '2024-10-20',
+      status: 'upcoming',
+    },
   ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
-      {/* Tab Bar */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-around', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
-        {tabs.map(tab => (
+    <View style={styles.container}>
+      {/* Header */}
+      <LinearGradient
+        colors={['#3B82F6', '#9333EA', '#EC4899']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <Text style={styles.headerTitle}>My Learning</Text>
+
+        {/* Quick Stats */}
+        <View style={styles.stats}>
+          <View style={styles.stat}>
+            <SvgXml xml={bookOpenSvg} width={20} height={20} color="#fff" />
+            <Text style={styles.statLabel}>Courses</Text>
+            <Text style={styles.statValue}>{enrolledCourses.length}</Text>
+          </View>
+          <View style={styles.stat}>
+            <SvgXml xml={heartSvg} width={20} height={20} color="#fff" />
+            <Text style={styles.statLabel}>Wellness</Text>
+            <Text style={styles.statValue}>{enrolledWellness.length}</Text>
+          </View>
+          <View style={styles.stat}>
+            <SvgXml xml={calendarSvg} width={20} height={20} color="#fff" />
+            <Text style={styles.statLabel}>Events</Text>
+            <Text style={styles.statValue}>{registeredEvents.length}</Text>
+          </View>
+          <View style={styles.stat}>
+            <SvgXml xml={usersSvg} width={20} height={20} color="#fff" />
+            <Text style={styles.statLabel}>Workshops</Text>
+            <Text style={styles.statValue}>{registeredWorkshops.length}</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      <View style={styles.content}>
+        {/* Tabs */}
+        <View style={styles.tabs}>
           <TouchableOpacity
-            key={tab.key}
-            style={{ paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: activeTab === tab.key ? '#6366F1' : 'transparent', flex: 1 }}
-            onPress={() => setActiveTab(tab.key)}
+            style={[styles.tab, activeTab === 'courses' && styles.tabActive]}
+            onPress={() => setActiveTab('courses')}
           >
-            <Text style={{ textAlign: 'center', color: activeTab === tab.key ? '#6366F1' : '#6B7280', fontWeight: '700' }}>{tab.label}</Text>
+            <Text style={[styles.tabText, activeTab === 'courses' && styles.tabTextActive]}>Courses</Text>
           </TouchableOpacity>
-        ))}
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'wellness' && styles.tabActive]}
+            onPress={() => setActiveTab('wellness')}
+          >
+            <Text style={[styles.tabText, activeTab === 'wellness' && styles.tabTextActive]}>Wellness</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'events' && styles.tabActive]}
+            onPress={() => setActiveTab('events')}
+          >
+            <Text style={[styles.tabText, activeTab === 'events' && styles.tabTextActive]}>Events</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'workshops' && styles.tabActive]}
+            onPress={() => setActiveTab('workshops')}
+          >
+            <Text style={[styles.tabText, activeTab === 'workshops' && styles.tabTextActive]}>Workshops</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          {/* Courses Tab */}
+          {activeTab === 'courses' && (
+            <View style={styles.tabContent}>
+              <Text style={styles.sectionTitle}>My Courses</Text>
+              {enrolledCourses.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.itemCard}
+                  onPress={() => navigation.navigate('CourseViewer', { course: item })}
+                >
+                  <Text style={styles.itemTitle}>{item.title}</Text>
+                  <Text style={styles.itemSubtitle}>by {item.instructor}</Text>
+                  <Text style={styles.itemStatus}>{item.status} - {item.progress}%</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Wellness Tab */}
+          {activeTab === 'wellness' && (
+            <View style={styles.tabContent}>
+              <Text style={styles.sectionTitle}>Wellness Programs</Text>
+              {enrolledWellness.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.itemCard}
+                  onPress={() => navigation.navigate('WellnessViewer', { program: item })}
+                >
+                  <Text style={styles.itemTitle}>{item.title}</Text>
+                  <Text style={styles.itemSubtitle}>{item.type}</Text>
+                  <Text style={styles.itemStatus}>{item.status} - {item.progress}%</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Events Tab */}
+          {activeTab === 'events' && (
+            <View style={styles.tabContent}>
+              <Text style={styles.sectionTitle}>My Events</Text>
+              {registeredEvents.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.itemCard}
+                  onPress={() => navigation.navigate('EventViewer', { event: item })}
+                >
+                  <Text style={styles.itemTitle}>{item.title}</Text>
+                  <Text style={styles.itemSubtitle}>{item.date}</Text>
+                  <Text style={styles.itemStatus}>{item.status}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Workshops Tab */}
+          {activeTab === 'workshops' && (
+            <View style={styles.tabContent}>
+              <Text style={styles.sectionTitle}>My Workshops</Text>
+              {registeredWorkshops.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.itemCard}
+                  onPress={() => navigation.navigate('WorkshopViewer', { workshop: item })}
+                >
+                  <Text style={styles.itemTitle}>{item.title}</Text>
+                  <Text style={styles.itemSubtitle}>{item.date}</Text>
+                  <Text style={styles.itemStatus}>{item.status}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </ScrollView>
       </View>
-
-      {/* Content */}
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-        {loading && <ActivityIndicator size="large" color="#6366F1" style={{ marginTop: 32 }} />}
-
-        {activeTab === 'courses' && (
-          courses.filter(Boolean).length === 0 ? (
-            <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No courses enrolled yet.</Text>
-          ) : (
-            courses.filter(Boolean).map((item, idx) => (
-              <View key={item._id || idx}>{renderCourseItem({ item })}</View>
-            ))
-          )
-        )}
-
-        {activeTab === 'conferences' && (
-          conferences.filter(Boolean).length === 0 ? (
-            <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No conferences registered yet.</Text>
-          ) : (
-            conferences.filter(Boolean).map((item, idx) => (
-              <View key={item._id || idx}>{renderConferenceItem({ item })}</View>
-            ))
-          )
-        )}
-
-        {activeTab === 'workshops' && (
-          Array.isArray(workshops) && workshops.filter(Boolean).length === 0 ? (
-            <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No workshops enrolled yet.</Text>
-          ) : (
-            (Array.isArray(workshops) ? workshops : []).filter(Boolean).map((item, idx) => {
-              // Defensive: ensure videoUrl is available at top-level or in metadata
-              if (!item.videoUrl && item.metadata && item.metadata.videoUrl) {
-                item.videoUrl = item.metadata.videoUrl;
-              }
-              return <View key={item._id || idx}>{renderWorkshopItem({ item })}</View>;
-            })
-          )
-        )}
-
-        {activeTab === 'events' && (
-          events.filter(Boolean).length === 0 ? (
-            <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No events booked yet.</Text>
-          ) : (
-            events.filter(Boolean).map((item, idx) => (
-              <View key={item._id || idx}>{renderEventItem({ item })}</View>
-            ))
-          )
-        )}
-
-        {activeTab === 'sessions' && (
-          sessions.filter(Boolean).length === 0 ? (
-            <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No sessions booked yet.</Text>
-          ) : (
-            sessions.filter(Boolean).map((item, idx) => (
-              <View key={item._id || idx}>{renderSessionItem({ item })}</View>
-            ))
-          )
-        )}
-      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  heroCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    marginBottom: 18,
-    overflow: 'hidden',
-    elevation: 2,
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 48 : 48,
+    paddingBottom: 32,
+    paddingHorizontal: 24,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
     shadowColor: '#000',
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  stats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  stat: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    backdropFilter: 'blur(10px)',
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  heroImageWrap: { position: 'relative', height: 140, backgroundColor: '#E0E7FF' },
-  heroImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.18)' },
-  statusPill: { position: 'absolute', top: 12, right: 12, backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, elevation: 1 },
-  statusPillText: { color: '#6366F1', fontWeight: '700', fontSize: 12 },
-  heroTitle: { position: 'absolute', left: 16, bottom: 12, color: '#fff', fontWeight: '800', fontSize: 18, textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
-  heroProgressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12 },
-  progressLabel: { color: '#6B7280', fontSize: 13 },
-  progressPct: { color: '#6366F1', fontWeight: '700', fontSize: 13 },
-  progressBarRich: { height: 6, backgroundColor: '#E5E7EB', borderRadius: 6, marginHorizontal: 16, marginTop: 8, marginBottom: 8 },
-  progressFillRich: { height: 6, backgroundColor: '#6366F1', borderRadius: 6 },
-  nextLessonCard: { backgroundColor: '#F3F4F6', borderRadius: 8, margin: 12, padding: 10 },
-  nextLessonLabel: { color: '#6B7280', fontSize: 12 },
-  nextLessonTitle: { color: '#111827', fontWeight: '700', fontSize: 14 },
+  statLabel: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  statValue: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  content: {
+    flex: 1,
+  },
+  tabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 4,
+    margin: 16,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  tabActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  tabText: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: '#1F2937',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  tabContent: {
+    padding: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  itemCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  itemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  itemSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  itemStatus: {
+    fontSize: 12,
+    color: '#3B82F6',
+    fontWeight: '500',
+  },
 });
 
 export default MyLearningScreen;

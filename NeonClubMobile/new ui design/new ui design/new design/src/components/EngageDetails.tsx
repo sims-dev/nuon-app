@@ -169,12 +169,12 @@ export function EngageDetails({ onNavigate, engageData }: EngageDetailsProps) {
                 </div>
               </div>
             )}
-            {data.seats && (
+            {data.capacity && (
               <div className="flex items-center gap-3">
                 <Users className="h-5 w-5 text-primary" />
                 <div>
                   <p className="text-sm text-gray-600">Availability</p>
-                  <p className="text-sm">{data.seats} seats remaining</p>
+                  <p className="text-sm">{data.capacity - (data.enrolled || 0)} spots available</p>
                 </div>
               </div>
             )}

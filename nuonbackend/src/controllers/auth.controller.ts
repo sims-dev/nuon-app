@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, Param, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Param, UseGuards, HttpException, HttpStatus, Req } from '@nestjs/common';
 import { Response } from 'express';
 import { UserDto } from '../dto/user.dto';
 import { AuthService } from '../services/auth.service';
@@ -92,10 +92,9 @@ export class AuthController {
     // Get current user profile
     @Get('profile')
     @UseGuards(JwtAuthGuard)
-    async getCurrentProfile(): Promise<Record<string, unknown>> {
+    async getCurrentProfile(@Req() req: any): Promise<Record<string, unknown>> {
         try {
-            // TODO: Get user from JWT guard context
-            const userId = BigInt(1); // Placeholder - should get from guard
+            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
             return await this.authService.getCurrentProfile(userId);
         } catch (error) {
             throw new HttpException(
@@ -105,18 +104,29 @@ export class AuthController {
         }
     }
 
+    // Legacy alias used by mobile
+    @Get('user/me')
+    @UseGuards(JwtAuthGuard)
+    async getUserMe(@Req() req: any): Promise<Record<string, unknown>> {
+        try {
+            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
+            return await this.authService.getCurrentProfile(userId);
+        } catch (error) {
+            throw new HttpException({ success: false, message: (error as Error).message }, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     // Update profile
     @Put('profile')
     @UseGuards(JwtAuthGuard)
-    async updateProfile(@Body() body: {
+    async updateProfile(@Req() req: any, @Body() body: {
         name?: string;
         specialization?: string;
         experience?: number;
         location?: string;
     }): Promise<Record<string, unknown>> {
         try {
-            // TODO: Get user from JWT guard context
-            const userId = BigInt(1); // Placeholder - should get from guard
+            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
             return await this.authService.updateProfile(userId, body);
         } catch (error) {
             throw new HttpException(
@@ -129,15 +139,15 @@ export class AuthController {
     // Create or update profile
     @Post('profile')
     @UseGuards(JwtAuthGuard)
-    async createOrUpdateProfile(@Body() body: {
+    async createOrUpdateProfile(@Req() req: any, @Body() body: {
         name?: string;
         specialization?: string;
         experience?: number;
         location?: string;
+        profilePicture?: string;
     }): Promise<Record<string, unknown>> {
         try {
-            // TODO: Get user from JWT guard context
-            const userId = BigInt(1); // Placeholder - should get from guard
+            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
             return await this.authService.createOrUpdateProfile(userId, body);
         } catch (error) {
             throw new HttpException(
@@ -145,6 +155,31 @@ export class AuthController {
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
         }
+    }
+
+    // Notification settings used by mobile
+    @Get('profile/notification-settings')
+    @UseGuards(JwtAuthGuard)
+    async getNotificationSettings(@Req() req: any): Promise<any> {
+        // Return simple default settings — can be persisted later
+        return {
+            success: true,
+            settings: {
+                push: true,
+                email: true,
+                sms: false
+            }
+        };
+    }
+
+    @Put('profile/notification-settings')
+    @UseGuards(JwtAuthGuard)
+    async updateNotificationSettings(@Req() req: any, @Body() body: any): Promise<any> {
+        // TODO: persist settings per-user in DB; for now return what was sent
+        return {
+            success: true,
+            settings: body
+        };
     }
 
     @Post('create-role')

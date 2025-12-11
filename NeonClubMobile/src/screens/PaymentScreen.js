@@ -12,16 +12,203 @@ import {
 } from 'react-native';
 // Using text-based icons instead of vector icons to avoid dependency issues
 import { paymentAPI, bookingAPI } from '../services/api';
+import api from '../services/api';
 import GiftIcon from '../components/GiftIcon';
 import IconBox from '../components/IconBox';
 
 
 const PaymentScreen = ({ route, navigation }) => {
-  // Mentorship session payment params
-  const {
-    mentorId, mentorName, mentorAvatar, mentorSpecialty, mentorPrice = 1999, mentorDuration = '45 min session',
-    date, time, dateTime, isReschedule, bookingId
-  } = route.params || {};
+   // Check if this is for engage activity or mentorship session
+   const { type, item } = route.params || {};
+
+   // Engage activity payment params
+   if (type === 'engage-activity' && item) {
+     const engageItem = item;
+     const engagePrice = engageItem.price || 0;
+     const engageName = engageItem.title || 'Engage Activity';
+     const engageType = engageItem.category === 'wellness' ? 'Wellness' :
+                       engageItem.category === 'fitness' ? 'Fitness' : 'Event';
+
+     // Use engage-specific variables
+     const [loading, setLoading] = useState(false);
+     const [successVisible, setSuccessVisible] = useState(false);
+     const [selectedMethod, setSelectedMethod] = useState('card');
+     const [coupon, setCoupon] = useState('');
+     const [appliedCoupon, setAppliedCoupon] = useState(null);
+     const [couponError, setCouponError] = useState('');
+
+     const paymentMethods = [
+       { id: 'card', name: 'Credit/Debit Card' },
+       { id: 'upi', name: 'UPI' },
+       { id: 'netbanking', name: 'Net Banking' },
+     ];
+
+     const discounts = useMemo(() => ({
+       'ENGAGE2024': 100,
+       'WELCOME50': 50,
+       'SAVE25': 25,
+     }), []);
+     const normalizedCoupon = (c) => (c || '').toUpperCase().trim();
+     const discountAmount = useMemo(() => (appliedCoupon ? (discounts[appliedCoupon] || 0) : 0), [appliedCoupon, discounts]);
+     const finalAmount = Math.max(0, engagePrice - discountAmount);
+     const rewardPoints = Math.floor(finalAmount / 10) * 2;
+
+     const applyCoupon = () => {
+       setCouponError('');
+       const code = normalizedCoupon(coupon);
+       if (!code) {
+         setCouponError('Enter a coupon code');
+         return;
+       }
+       if (!discounts[code]) {
+         setCouponError('Invalid or expired coupon');
+         return;
+       }
+       setAppliedCoupon(code);
+     };
+
+     const removeCoupon = () => {
+       setAppliedCoupon(null);
+       setCoupon('');
+       setCouponError('');
+     };
+
+     const handlePayment = async () => {
+       setLoading(true);
+       try {
+         // For free items, skip payment processing and directly register
+         if (finalAmount === 0) {
+           await api.post(`/engage/activities/${engageItem._id}/register`, {
+             paymentId: 'free_' + Date.now(),
+             paymentMethod: 'free',
+             coupon: appliedCoupon || undefined,
+           });
+           setLoading(false);
+           setSuccessVisible(true);
+           return;
+         }
+
+         // Create engage activity registration with payment
+         const paymentData = {
+           activityId: engageItem._id,
+           amount: finalAmount,
+           originalAmount: engagePrice,
+           coupon: appliedCoupon || undefined,
+           paymentMethod: selectedMethod,
+           type: 'engage-activity'
+         };
+
+         // Simulate payment processing
+         await new Promise(resolve => setTimeout(resolve, 2000));
+
+         // Register for the activity
+         await api.post(`/engage/activities/${engageItem._id}/register`, {
+           paymentId: 'simulated_' + Date.now(),
+           paymentMethod: selectedMethod,
+           coupon: appliedCoupon || undefined,
+         });
+
+         setLoading(false);
+         setSuccessVisible(true);
+       } catch (error) {
+         setLoading(false);
+         Alert.alert('Payment Failed', error.response?.data?.message || 'Something went wrong');
+       }
+     };
+
+     return (
+       <View style={styles.container}>
+         {/* Success Modal */}
+         {successVisible && (
+           <View style={styles.successModalBackdrop}>
+             <View style={styles.successModalCard}>
+               <IconBox size={64} style={styles.successIconBox}>
+                 <GiftIcon width={36} height={36} color="#FFFFFF" />
+               </IconBox>
+               <Text style={styles.successTitle}>Payment Successful!</Text>
+               <Text style={styles.successMsg}>You're enrolled in {engageName}.</Text>
+               <TouchableOpacity style={styles.successBtn} onPress={() => { setSuccessVisible(false); navigation.navigate('Engage'); }}>
+                 <Text style={styles.successBtnText}>Awesome!</Text>
+               </TouchableOpacity>
+             </View>
+           </View>
+         )}
+         {/* Loader */}
+         {loading && (
+           <View style={styles.loaderBackdrop}><ActivityIndicator size="large" color="#7C3AED" /></View>
+         )}
+         <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+           {/* Order Summary */}
+           <View style={styles.orderSummary}>
+             <Text style={styles.sectionTitle}>Order Summary</Text>
+             <View style={styles.orderItem}>
+               <Text style={styles.itemName}>{engageName}</Text>
+               <Text style={styles.itemType}>{engageType} Activity</Text>
+             </View>
+             <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Subtotal</Text><Text style={styles.summaryValue}>₹{engagePrice}</Text></View>
+             <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Processing Fee</Text><Text style={styles.summaryValue}>₹0</Text></View>
+             <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Total</Text><Text style={styles.summaryValue}>₹{finalAmount}</Text></View>
+             <View style={styles.rewardBox}><Text style={{ fontSize: 18, color: '#059669' }}>🎁</Text><Text style={styles.rewardText}>You'll earn {rewardPoints} reward points</Text></View>
+           </View>
+           {/* Coupon Code */}
+           <View style={styles.couponCard}>
+             <Text style={styles.couponLabel}>Apply Coupon Code</Text>
+             <View style={styles.couponRow}>
+               <TextInput
+                 placeholder="ENTER COUPON OR REFERRAL CODE"
+                 placeholderTextColor="#94a3b8"
+                 autoCapitalize="characters"
+                 value={coupon}
+                 onChangeText={(t) => setCoupon((t || '').toUpperCase())}
+                 style={styles.couponEditable}
+               />
+               {!appliedCoupon ? (
+                 <TouchableOpacity style={styles.applyBtn} onPress={applyCoupon}><Text style={styles.applyBtnText}>Apply</Text></TouchableOpacity>
+               ) : (
+                 <TouchableOpacity onPress={removeCoupon}><Text style={styles.removeCoupon}>✕</Text></TouchableOpacity>
+               )}
+             </View>
+             {!!couponError && <Text style={styles.couponError}>{couponError}</Text>}
+             <Text style={styles.couponHint}>Try: ENGAGE2024, WELCOME50, SAVE25</Text>
+           </View>
+           {/* Payment Methods */}
+           <View style={styles.paymentMethods}>
+             <Text style={styles.sectionTitle}>Payment Method</Text>
+             {paymentMethods.map((method) => (
+               <TouchableOpacity
+                 key={method.id}
+                 style={[styles.methodCard, selectedMethod === method.id && styles.selectedMethod]}
+                 onPress={() => setSelectedMethod(method.id)}
+               >
+                 <Text style={styles.methodName}>{method.name}</Text>
+                 <View style={[styles.radioButton, selectedMethod === method.id && styles.radioButtonSelected]} />
+               </TouchableOpacity>
+             ))}
+           </View>
+         </ScrollView>
+         {/* Pay Now Button */}
+         <View style={styles.footer}>
+           <TouchableOpacity
+             style={[styles.payButton, loading && { opacity: 0.5 }]}
+             onPress={handlePayment}
+             disabled={loading}
+           >
+             {loading ? (
+               <ActivityIndicator color="#fff" />
+             ) : (
+               <Text style={styles.payButtonText}>Pay Now</Text>
+             )}
+           </TouchableOpacity>
+         </View>
+       </View>
+     );
+   }
+
+   // Mentorship session payment params (original logic)
+   const {
+     mentorId, mentorName, mentorAvatar, mentorSpecialty, mentorPrice = 1999, mentorDuration = '45 min session',
+     date, time, dateTime, isReschedule, bookingId
+   } = route.params || {};
   const [loading, setLoading] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState('card');

@@ -16,9 +16,25 @@ export class CourseService {
                 orderBy: { createdAt: 'desc' }
             });
 
+            const formatted = courses.map(c => ({
+                _id: c.id.toString(),
+                id: c.id.toString(),
+                title: c.title,
+                description: c.description,
+                price: c.price,
+                thumbnail: c.thumbnail || null,
+                category: c.category || c.level || 'course',
+                instructor: c.instructor,
+                enrolledCount: c.enrolledCount || c.enrollmentCount || 0,
+                lessons: (c as any).lessons || [],
+                createdAt: c.createdAt,
+                updatedAt: c.updatedAt,
+                raw: c
+            }));
+
             return {
                 success: true,
-                courses
+                courses: formatted
             };
         } catch (error) {
             throw new Error((error as Error).message);
@@ -61,9 +77,25 @@ export class CourseService {
                 } as any;
             }
 
+            const formatted = {
+                _id: course.id.toString(),
+                id: course.id.toString(),
+                title: course.title,
+                description: course.description,
+                price: course.price,
+                thumbnail: course.thumbnail || null,
+                category: course.category || course.level || 'course',
+                lessons: (course as any).lessons || [],
+                instructor: course.instructor,
+                enrolledCount: course.enrolledCount || course.enrollmentCount || 0,
+                createdAt: course.createdAt,
+                updatedAt: course.updatedAt,
+                raw: processedCourse
+            };
+
             return {
                 success: true,
-                course: processedCourse,
+                course: formatted,
                 hasPurchased
             };
         } catch (error) {
@@ -132,9 +164,24 @@ export class CourseService {
                 }
             });
 
+            const formatted = courses.map(c => ({
+                _id: c.id.toString(),
+                id: c.id.toString(),
+                title: c.title,
+                description: c.description,
+                price: c.price,
+                thumbnail: c.thumbnail || null,
+                instructor: c.instructor,
+                enrolledCount: c.enrolledCount || c.enrollmentCount || 0,
+                lessons: (c as any).lessons || [],
+                createdAt: c.createdAt,
+                updatedAt: c.updatedAt,
+                raw: c
+            }));
+
             return {
                 success: true,
-                courses
+                courses: formatted
             };
         } catch (error) {
             throw new Error((error as Error).message);
@@ -199,6 +246,60 @@ export class CourseService {
                 success: true,
                 message: 'Course purchased successfully',
                 purchase
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async updateCourse(courseId: bigint, courseData: any): Promise<any> {
+        try {
+            const course = await this.prisma.course.findUnique({
+                where: { id: courseId }
+            });
+
+            if (!course) {
+                throw new Error('Course not found');
+            }
+
+            const updateData: any = {
+                title: courseData.title || course.title,
+                description: courseData.description || course.description,
+                price: courseData.price !== undefined ? courseData.price : course.price,
+                thumbnail: courseData.thumbnail || courseData.image || course.thumbnail,
+                category: courseData.category || course.category,
+                level: courseData.level || course.level,
+                isActive: courseData.isActive !== undefined ? courseData.isActive : course.isActive,
+            };
+
+            // Add new fields if they exist in the schema
+            if (courseData.image !== undefined) updateData.image = courseData.image;
+            if (courseData.type !== undefined) updateData.type = courseData.type;
+            if (courseData.duration !== undefined) updateData.duration = courseData.duration;
+            if (courseData.modules !== undefined) updateData.modules = courseData.modules;
+            if (courseData.points !== undefined) updateData.points = courseData.points;
+            if (courseData.certificate !== undefined) updateData.certificate = courseData.certificate;
+            if (courseData.videoUrl !== undefined) updateData.videoUrl = courseData.videoUrl;
+            if (courseData.videoTitle !== undefined) updateData.videoTitle = courseData.videoTitle;
+            if (courseData.videoDuration !== undefined) updateData.videoDuration = courseData.videoDuration;
+            if (courseData.videoQuality !== undefined) updateData.videoQuality = courseData.videoQuality;
+            if (courseData.videoUploadedAt !== undefined) updateData.videoUploadedAt = courseData.videoUploadedAt;
+            if (courseData.videoThumbnail !== undefined) updateData.videoThumbnail = courseData.videoThumbnail;
+
+            const updatedCourse = await this.prisma.course.update({
+                where: { id: courseId },
+                data: updateData,
+                include: {
+                    instructor: {
+                        select: { id: true, name: true, email: true }
+                    }
+                }
+            });
+
+            return {
+                success: true,
+                message: 'Course updated successfully',
+                course: updatedCourse
             };
         } catch (error) {
             throw new Error((error as Error).message);

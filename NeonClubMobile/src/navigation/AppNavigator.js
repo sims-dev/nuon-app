@@ -20,6 +20,7 @@ import ConferenceViewerScreen from '../screens/ConferenceViewerScreen';
 import EventViewerScreen from '../screens/EventViewerScreen';
 import WorkshopViewerScreen from '../screens/WorkshopViewerScreen';
 import MyLearningScreen from '../screens/MyLearningScreen';
+import LearningDetailsScreen from '../screens/LearningDetailsScreen';
 import BookingScreen from '../screens/BookingScreen';
 import AssessmentScreen from '../screens/AssessmentScreen';
 import NCCScreen from '../screens/NCCScreen';
@@ -42,6 +43,7 @@ import ProfileEditScreen from '../screens/ProfileEditScreen';
 import CertificationsScreen from '../screens/CertificationsScreen';
 import OrderHistory from '../screens/OrderHistory';
 import ReferralScreen from '../screens/ReferralScreen';
+import EngageDetailsScreen from '../screens/EngageDetailsScreen';
 
 const Stack = createStackNavigator();
 
@@ -165,6 +167,11 @@ const AppNavigator = () => {
           options={{ headerShown: false }}
         />
         <Stack.Screen
+          name="LearningDetails"
+          component={LearningDetailsScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
           name="Bookings"
           component={BookingScreen}
           options={{ title: 'My Bookings' }}
@@ -262,6 +269,11 @@ const AppNavigator = () => {
         <Stack.Screen
           name="Referral"
           component={ReferralScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="EngageDetails"
+          component={EngageDetailsScreen}
           options={{ headerShown: false }}
         />
       </Stack.Navigator>

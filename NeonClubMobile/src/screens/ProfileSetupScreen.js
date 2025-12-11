@@ -67,6 +67,19 @@ const ProfileSetupScreen = () => {
     }
   }, [paramToken, token, setToken]);
 
+  // Show popup for incomplete profile
+  useEffect(() => {
+    if (initialUser?.profileIncomplete) {
+      setTimeout(() => {
+        Alert.alert(
+          'Complete Your Profile',
+          'Please complete your professional details to unlock all features and get the most out of your NUON experience.',
+          [{ text: 'OK' }]
+        );
+      }, 500); // Delay to show after screen loads
+    }
+  }, [initialUser]);
+
   // Initialize form data - start with empty fields for real-time completion
   // Don't prefill any data, let user enter everything fresh
   useEffect(() => {
@@ -152,7 +165,11 @@ const ProfileSetupScreen = () => {
         'You can complete these details later from your profile.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Skip', onPress: () => handleSubmit() }
+          { text: 'Skip', onPress: () => {
+            // Mark as incomplete and go to main
+            updateUser({ ...initialUser, profileIncomplete: true });
+            navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main' }] }));
+          }}
         ]
       );
     }
@@ -218,13 +235,19 @@ const ProfileSetupScreen = () => {
 
         // Update auth context
         setToken(newToken);
-        updateUser(newUser);
+        updateUser({ ...newUser, profileIncomplete: !hasCompletedProfessionalDetails });
+
+        console.log('[DEBUG] Profile setup completed:', {
+          hasCompletedProfessionalDetails,
+          profileIncomplete: !hasCompletedProfessionalDetails,
+          user: newUser?.name
+        });
 
         setLoading(false);
-        
+
         if (!hasCompletedProfessionalDetails) {
           Alert.alert(
-            'Profile Partially Complete', 
+            'Profile Partially Complete',
             'You can complete your professional details anytime from your profile.',
             [{ text: 'OK' }]
           );
@@ -233,6 +256,7 @@ const ProfileSetupScreen = () => {
         }
 
         // Navigate to dashboard
+        console.log('[DEBUG] Navigating to Main after profile setup');
         setTimeout(() => {
           navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main' }] }));
         }, 600);

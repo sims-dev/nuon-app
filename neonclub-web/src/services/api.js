@@ -1,5 +1,7 @@
 import axios from 'axios';
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+// Default to local backend with API prefix when env var is not provided
+const DEFAULT_API_BASE = 'http://192.168.0.209:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || DEFAULT_API_BASE;
 
 const api = axios.create({
   baseURL: API_BASE_URL,

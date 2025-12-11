@@ -151,6 +151,22 @@ const HomeScreen = ({ navigation }) => {
       }
     };
 
+  // Show popup for incomplete profile
+  useEffect(() => {
+    if (user?.profileIncomplete) {
+      setTimeout(() => {
+        Alert.alert(
+          'Complete Your Profile',
+          'Your profile is incomplete. Please complete your professional details to unlock all features.',
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'Complete Now', onPress: () => navigation.navigate('ProfileEdit') }
+          ]
+        );
+      }, 1000); // Delay to show after screen loads
+    }
+  }, [user, navigation]);
+
   // Initial load + socket wiring for real-time updates
   useEffect(() => {
     fetchAdditionalData();
@@ -209,18 +225,25 @@ const HomeScreen = ({ navigation }) => {
         style={styles.headerGradient}
       >
         <View style={styles.headerTop}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.profileSection}
-            onPress={() => navigation.navigate('Profile')}
+            onPress={() => {
+              console.log('[DEBUG] Home screen profile icon pressed, navigating to Profile');
+              navigation.navigate('Profile');
+            }}
           >
             <View style={styles.profilePhotoContainer}>
               {user?.profilePhoto ? (
                 <Image source={{ uri: user.profilePhoto }} style={styles.profilePhoto} />
               ) : (
                 <View style={styles.profilePhotoPlaceholder}>
-                  <Text style={styles.profilePhotoText}>
-                    {user?.name ? user.name.charAt(0).toUpperCase() : '👤'}
-                  </Text>
+                  {user?.name ? (
+                    <Text style={styles.profilePhotoText}>
+                      {user.name.charAt(0).toUpperCase()}
+                    </Text>
+                  ) : (
+                    <UserIcon width={24} height={24} color="#FFFFFF" />
+                  )}
                 </View>
               )}
             </View>
@@ -276,7 +299,7 @@ const HomeScreen = ({ navigation }) => {
             </View>
             <TouchableOpacity
               style={styles.bannerButtonNew}
-              onPress={() => navigation.navigate('ProfileSetup')}
+              onPress={() => navigation.navigate('ProfileEdit')}
             >
               <Text style={styles.bannerButtonTextNew}>Complete</Text>
             </TouchableOpacity>
@@ -450,7 +473,7 @@ const HomeScreen = ({ navigation }) => {
               style={styles.activityCard}
               onPress={() => {
                 try { activitiesAPI.create({ type:'activity-tap', title: item.title, ref: item.id, meta: { kind: item.kind } }); } catch {}
-                navigation.navigate('Activities');
+                navigation.navigate('Engage');
               }}
             >
               <View style={styles.datePill}>

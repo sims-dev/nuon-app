@@ -7,7 +7,7 @@ import { CommonActions } from '@react-navigation/native';
 // Login Function - Add to LoginScreen
 export const handleLogin = async (email, password, navigation) => {
   try {
-    const response = await api.post('/login', { email, password });
+    const response = await api.post('/auth/login', { email, password });
     const { token, user } = response.data;
 
     // Log the token for debugging (copy this from Metro/console)

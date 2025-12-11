@@ -125,6 +125,10 @@ model User {
    assessmentAttempts AssessmentAttempt[]
    catalogItems      CatalogItem[]
    zoomSessionsAsUser ZoomSession[] @relation("zoom_user")
+   engageInstructor  EngageActivity[]       @relation("engage_instructor")
+   engageCreator     EngageActivity[]       @relation("engage_creator")
+   engageRegistrations EngageActivityRegistration[] @relation("engage_registrations")
+   engageReviews     EngageActivityReview[] @relation("engage_reviews")
 
    @@unique([email])
    @@unique([phoneNumber])
@@ -244,53 +248,84 @@ model Lesson {
 }
 
 model Course {
-   id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-   title          String   @db.VarChar(255)
-   description    String   @db.Text
-   price          Float    @default(0)
-   thumbnail      String?  @db.VarChar(500)
-   lessons        Json?
-   level          String?  @db.VarChar(20)
-   category       String?  @db.VarChar(50)
-   instructorId    BigInt?  @db.UnsignedBigInt @map("instructor_id")
-   enrolledCount  Int      @default(0) @map("enrolled_count")
-   enrollmentCount Int     @default(0) @map("enrollment_count")
-   isActive       Boolean  @default(true) @map("is_active")
-   createdAt      DateTime @default(now()) @map("created_at")
-   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
-   instructor     User?    @relation("course_instructor", fields: [instructorId], references: [id])
-   lessonsList    Lesson[]
-   userProgress   UserProgress[]
-   assessments    Assessment[]
+    id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+    title          String   @db.VarChar(255)
+    description    String   @db.Text
+    price          Float    @default(0)
+    thumbnail      String?  @db.VarChar(500)
+    image          String?  @db.VarChar(500)
+    lessons        Json?
+    level          String?  @db.VarChar(20)
+    category       String?  @db.VarChar(50)
+    instructorId    BigInt?  @db.UnsignedBigInt @map("instructor_id")
+    enrolledCount  Int      @default(0) @map("enrolled_count")
+    enrollmentCount Int     @default(0) @map("enrollment_count")
+    isActive       Boolean  @default(true) @map("is_active")
+    points         Int      @default(0)
+    certificate    Boolean  @default(false)
+    modules        Int?     @default(0)
+    duration       String?  @db.VarChar(50)
+    type           String?  @db.VarChar(50)
+    // Video fields
+    videoUrl       String?  @db.VarChar(500) @map("video_url")
+    videoTitle     String?  @db.VarChar(255) @map("video_title")
+    videoDuration  Int?     @map("video_duration")
+    videoQuality   String?  @db.VarChar(100) @map("video_quality")
+    videoUploadedAt DateTime? @map("video_uploaded_at")
+    videoThumbnail String?  @db.VarChar(500) @map("video_thumbnail")
+    createdAt      DateTime @default(now()) @map("created_at")
+    updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+    instructor     User?    @relation("course_instructor", fields: [instructorId], references: [id])
+    lessonsList    Lesson[]
+    userProgress   UserProgress[]
+    assessments    Assessment[]
 
-   @@map("courses")
+    @@map("courses")
 }
 
 model Event {
-   id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-   title           String   @db.VarChar(255)
-   description     String   @db.Text
-   price           Float    @default(0)
-   date            DateTime
-   time            String?  @db.VarChar(20)
-   duration        Int?     @default(60)
-   venue           String   @db.VarChar(255)
-   venueName       String?  @db.VarChar(255)
-   venueAddress    String?  @db.VarChar(500)
-   venueCity       String?  @db.VarChar(100)
-   venueLat        Float?
-   venueLng        Float?
-   maxParticipants Int      @default(100)
-   capacity        Int?     @default(100)
-   registeredCount Int      @default(0) @map("registered_count")
-   instructorId   BigInt?  @db.UnsignedBigInt @map("instructor_id")
-   imageUrl        String?  @db.VarChar(500)
-   status          String   @default("upcoming") @db.VarChar(20)
-   createdAt       DateTime @default(now()) @map("created_at")
-   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
-   instructor      User?    @relation("event_instructor", fields: [instructorId], references: [id])
+     id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+     title           String   @db.VarChar(255)
+     description     String   @db.Text
+     price           Float    @default(0)
+     date            DateTime
+     time            String?  @db.VarChar(20)
+     duration        Int?     @default(60)
+     venue           String   @db.VarChar(255)
+     location        String?  @db.VarChar(255)
+     venueName       String?  @db.VarChar(255)
+     venueAddress    String?  @db.VarChar(500)
+     venueCity       String?  @db.VarChar(100)
+     venueLat        Float?
+     venueLng        Float?
+     maxParticipants Int      @default(100)
+     capacity        Int?     @default(100)
+     registeredCount Int      @default(0) @map("registered_count")
+     seats           Int?     @default(100)
+     instructorId   BigInt?  @db.UnsignedBigInt @map("instructor_id")
+     image           String?  @db.VarChar(500)
+     imageUrl        String?  @db.VarChar(500)
+     thumbnail       String?  @db.VarChar(500)
+     status          String   @default("upcoming") @db.VarChar(20)
+     category        String   @default("event") @db.VarChar(50) // wellness, fitness, event
+     type            String?  @db.VarChar(50) // workshop, session, conference, etc.
+     points          Int      @default(0) // reward points for participation
+     level           String?  @db.VarChar(20) // beginner, intermediate, advanced
+     tags            Json?    // additional tags
+     isActive        Boolean  @default(true) @map("is_active")
+     speakers        String?  @db.VarChar(255)
+     // Video fields
+     videoUrl        String?  @db.VarChar(500) @map("video_url")
+     videoTitle      String?  @db.VarChar(255) @map("video_title")
+     videoDuration   Int?     @map("video_duration")
+     videoQuality    String?  @db.VarChar(100) @map("video_quality")
+     videoUploadedAt DateTime? @map("video_uploaded_at")
+     videoThumbnail  String?  @db.VarChar(500) @map("video_thumbnail")
+     createdAt       DateTime @default(now()) @map("created_at")
+     updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+     instructor      User?    @relation("event_instructor", fields: [instructorId], references: [id])
 
-   @@map("events")
+     @@map("events")
 }
 
 model Workshop {
@@ -299,13 +334,37 @@ model Workshop {
   slug            String           @unique @db.VarChar(255)
   description     String           @db.Text
   coverImage      String?          @db.VarChar(500)
+  image           String?          @db.VarChar(500)
+  thumbnail       String?          @db.VarChar(500)
   isPublished     Boolean          @default(false) @map("is_published")
   startDate       DateTime         @map("start_date")
   endDate         DateTime         @map("end_date")
+  date            String?          @db.VarChar(50)
+  time            String?          @db.VarChar(50)
+  duration        String?          @db.VarChar(50)
+  location        String?          @db.VarChar(255)
   tags            Json?
   metadata        Json?
   mentors         Json?
   createdBy       BigInt?          @db.UnsignedBigInt @map("created_by")
+  instructorId    BigInt?          @db.UnsignedBigInt @map("instructor_id")
+  instructor      String?          @db.VarChar(100)
+  price           Float            @default(0)
+  points          Int              @default(0)
+  enrolled        Int              @default(0)
+  seats           Int?             @default(50)
+  materials       String?          @db.VarChar(100)
+  type            String?          @db.VarChar(50)
+  category        String?          @db.VarChar(50)
+  level           String?          @db.VarChar(20)
+  isActive        Boolean          @default(true) @map("is_active")
+  // Video fields
+  videoUrl        String?          @db.VarChar(500) @map("video_url")
+  videoTitle      String?          @db.VarChar(255) @map("video_title")
+  videoDuration   Int?             @map("video_duration")
+  videoQuality    String?          @db.VarChar(100) @map("video_quality")
+  videoUploadedAt DateTime?        @map("video_uploaded_at")
+  videoThumbnail  String?          @db.VarChar(500) @map("video_thumbnail")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at")
   creator         User?            @relation("workshop_creator", fields: [createdBy], references: [id])
@@ -671,4 +730,123 @@ model WorkshopSession {
    workshop    Workshop    @relation(fields: [workshopId], references: [id])
 
    @@map("workshop_sessions")
+}
+
+model EngageActivity {
+   id               BigInt                    @id @default(autoincrement()) @db.UnsignedBigInt
+   title            String                    @db.VarChar(255)
+   description      String?                   @db.Text
+   category         String                    @db.VarChar(50) // wellness, fitness, event
+   type             String?                   @db.VarChar(50) // Workshop, Challenge, Session, etc.
+   
+   // Date and Time
+   date             DateTime?
+   time             String?                   @db.VarChar(50) // "3:00 PM - 5:00 PM"
+   duration         String?                   @db.VarChar(50) // "2 weeks", "30 days", "6 weeks"
+   
+   // Location
+   location         String?                   @db.VarChar(255) // Online, Mumbai Center, etc.
+   
+   // Pricing and Points
+   price            Float                     @default(0)
+   points           Int                       @default(100)
+   
+   // Media
+   image            String?                   @db.VarChar(500)
+   thumbnail        String?                   @db.VarChar(500)
+   
+   // Video Content
+   videoUrl         String?                   @db.VarChar(500) @map("video_url") // URL to uploaded video
+   videoTitle       String?                   @db.VarChar(255) @map("video_title")
+   videoDuration    Int?                      @map("video_duration") // Duration in seconds
+   videoQuality     String?                   @db.VarChar(100) @map("video_quality") // "auto,720p,480p,360p"
+   videoUploadedAt  DateTime?                 @map("video_uploaded_at")
+   videoThumbnail   String?                   @db.VarChar(500) @map("video_thumbnail") // Custom thumbnail for video
+   
+   // Instructor/Creator
+   instructorId     BigInt?                   @db.UnsignedBigInt @map("instructor_id")
+   instructorName   String?                   @db.VarChar(100) @map("instructor_name")
+   
+   // Capacity and Registration
+   capacity         Int                       @default(100)
+   registeredCount  Int                       @default(0) @map("registered_count")
+   
+   // Status and Meta
+   status           String                    @default("active") @db.VarChar(20) // active, upcoming, completed, archived
+   isActive         Boolean                   @default(true) @map("is_active")
+   
+   // Enrollment and Ratings
+   enrolled         Int                       @default(0)
+   rating           Float?                    @default(0)
+   reviewCount      Int                       @default(0) @map("review_count")
+   
+   // Additional Details
+   creatorId        BigInt?                   @db.UnsignedBigInt @map("creator_id")
+   tags             String?                   @db.VarChar(255) // JSON array stored as string
+   maxSeats         Int?                      @map("max_seats")
+   
+   // Timestamps
+   createdAt        DateTime                  @default(now()) @map("created_at")
+   updatedAt        DateTime                  @default(now()) @updatedAt @map("updated_at")
+   
+   // Relationships
+   instructor       User?                     @relation("engage_instructor", fields: [instructorId], references: [id])
+   creator          User?                     @relation("engage_creator", fields: [creatorId], references: [id])
+   registrations    EngageActivityRegistration[]
+   reviews          EngageActivityReview[]
+
+   @@index([category])
+   @@index([status])
+   @@index([creatorId])
+   @@map("engage_activities")
+}
+
+model EngageActivityRegistration {
+   id               BigInt                    @id @default(autoincrement()) @db.UnsignedBigInt
+   activityId       BigInt                    @db.UnsignedBigInt @map("activity_id")
+   userId           BigInt                    @db.UnsignedBigInt @map("user_id")
+   
+   // Registration details
+   registrationDate DateTime                  @default(now()) @map("registration_date")
+   status           String                    @default("registered") @db.VarChar(20) // registered, completed, cancelled
+   paymentId        BigInt?                   @db.UnsignedBigInt @map("payment_id")
+   amountPaid       Float?                    @map("amount_paid")
+   
+   // Completion tracking
+   completedAt      DateTime?                 @map("completed_at")
+   certificateUrl   String?                   @db.VarChar(500) @map("certificate_url")
+   
+   // Timestamps
+   createdAt        DateTime                  @default(now()) @map("created_at")
+   updatedAt        DateTime                  @default(now()) @updatedAt @map("updated_at")
+   
+   // Relationships
+   activity         EngageActivity            @relation(fields: [activityId], references: [id], onDelete: Cascade)
+   user             User                      @relation("engage_registrations", fields: [userId], references: [id], onDelete: Cascade)
+
+   @@unique([activityId, userId])
+   @@index([userId])
+   @@index([activityId])
+   @@map("engage_activity_registrations")
+}
+
+model EngageActivityReview {
+   id               BigInt                    @id @default(autoincrement()) @db.UnsignedBigInt
+   activityId       BigInt                    @db.UnsignedBigInt @map("activity_id")
+   userId           BigInt                    @db.UnsignedBigInt @map("user_id")
+   
+   rating           Int                       // 1-5 stars
+   review           String?                   @db.Text
+   
+   // Timestamps
+   createdAt        DateTime                  @default(now()) @map("created_at")
+   updatedAt        DateTime                  @default(now()) @updatedAt @map("updated_at")
+   
+   // Relationships
+   activity         EngageActivity            @relation(fields: [activityId], references: [id], onDelete: Cascade)
+   user             User                      @relation("engage_reviews", fields: [userId], references: [id], onDelete: Cascade)
+
+   @@unique([activityId, userId])
+   @@index([activityId])
+   @@map("engage_activity_reviews")
 }

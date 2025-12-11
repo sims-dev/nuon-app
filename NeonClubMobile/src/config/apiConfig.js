@@ -2,7 +2,8 @@
 const { IP_ADDRESS } = require('./ipConfig');
 
 // API Configuration for NeonClub Mobile App
-const API_BASE_URL = `http://${IP_ADDRESS || '192.168.0.116'}:3000`;
+// Use backend port 5000 and include global API prefix
+const API_BASE_URL = `http://${IP_ADDRESS || '192.168.0.116'}:5000/api`;
 
 export const API_ENDPOINTS = {
   BASE_URL: API_BASE_URL,
