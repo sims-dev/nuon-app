@@ -1,315 +1,580 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput, Image, FlatList } from 'react-native';
-import { NEON_COLORS } from '../utils/colors';
-import { mentorAPI } from '../services/api';
-import useAsync from '../hooks/useAsync';
-import { SkeletonList } from '../components/Skeleton';
-import socketService from '../services/socket';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Dimensions, TextInput, FlatList } from 'react-native';
+const { width } = Dimensions.get('window');
 
 const MentorsScreen = ({ navigation }) => {
-  const [mentors, setMentors] = useState([
+  const [activeTab, setActiveTab] = useState('browse');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Mock data - replace with API calls
+  const [availableMentors] = useState([
     {
       id: '1',
       name: 'Dr. Sunita Verma',
-      specialization: 'Critical Care',
+      specialization: 'Critical Care Nursing',
       experience: '15+ years',
-      rating: 4.9,
-      sessionsCompleted: 340,
+      rating: 4.8,
+      sessions: 340,
+      image: 'https://via.placeholder.com/96x96',
+      available: true,
+      hourlyRate: 2000
     },
     {
       id: '2',
       name: 'Dr. Rajesh Kumar',
       specialization: 'Emergency Medicine',
       experience: '12+ years',
-      rating: 4.8,
-      sessionsCompleted: 280,
+      rating: 4.9,
+      sessions: 280,
+      image: 'https://via.placeholder.com/96x96',
+      available: true,
+      hourlyRate: 1800
     },
     {
       id: '3',
-      name: 'Nurse Kavita Sharma',
+      name: 'Dr. Priya Sharma',
       specialization: 'Pediatric Care',
       experience: '10+ years',
-      rating: 4.9,
-      sessionsCompleted: 300,
-    },
+      rating: 4.7,
+      sessions: 220,
+      image: 'https://via.placeholder.com/96x96',
+      available: false,
+      hourlyRate: 1600
+    }
   ]);
-  const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [specFilter, setSpecFilter] = useState('');
-  const [activeTab, setActiveTab] = useState('browse');
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 200);
-    return () => clearTimeout(t);
-  }, [query]);
+  const [upcomingSessions] = useState([
+    {
+      id: '1',
+      mentor: 'Dr. Sunita Verma',
+      topic: 'Emergency Response Training',
+      date: 'Dec 20, 2024',
+      time: '2:00 PM',
+      duration: '60 min',
+      image: 'https://via.placeholder.com/80x80',
+      type: 'Video Call'
+    },
+    {
+      id: '2',
+      mentor: 'Dr. Rajesh Kumar',
+      topic: 'Patient Assessment Skills',
+      date: 'Dec 22, 2024',
+      time: '10:00 AM',
+      duration: '45 min',
+      image: 'https://via.placeholder.com/80x80',
+      type: 'Video Call'
+    }
+  ]);
 
-  const { run: loadMentors } = useAsync(async () => {
-    console.log('Loading mentors...'); // Debugging log
-    const list = await loadMentors(true); // Use updated loadMentors function
-    console.log('Fetched mentors:', list); // Debugging log
-    setMentors(list);
-    setLoading(false);
-    return list;
-  }, [], { immediate: false });
+  const filteredMentors = availableMentors.filter(mentor =>
+    mentor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    mentor.specialization.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  // Ensure dynamic fetching of updated mentor data
-  useEffect(() => {
-    const fetchMentors = async () => {
-      try {
-        const mentorsRes = await mentorAPI.getMentors();
-        console.log('Mentors fetched from API:', mentorsRes.data);
-        setMentors(mentorsRes.data);
-      } catch (error) {
-        console.error('Error fetching mentors:', error);
-      }
-    };
-    fetchMentors();
-  }, []); // Fetch mentors on component mount
+  const MentorCard = ({ mentor }) => (
+    <View style={styles.mentorCard}>
+      <View style={styles.mentorCardContent}>
+        <Image source={{ uri: mentor.image }} style={styles.mentorImage} />
+        <View style={styles.mentorInfo}>
+          <Text style={styles.mentorName}>{mentor.name}</Text>
+          <View style={styles.ratingContainer}>
+            <Text style={styles.ratingStar}>⭐</Text>
+            <Text style={styles.ratingText}>{mentor.rating}</Text>
+          </View>
+          <Text style={styles.mentorSpecialization}>{mentor.specialization}</Text>
+          <Text style={styles.mentorDetails}>{mentor.experience} • {mentor.sessions} sessions</Text>
+        </View>
+      </View>
+      <View style={styles.mentorActions}>
+        <TouchableOpacity style={styles.viewProfileButton}>
+          <Text style={styles.viewProfileText}>View Profile</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.bookSessionButton, !mentor.available && styles.bookSessionDisabled]}
+          disabled={!mentor.available}
+        >
+          <Text style={[styles.bookSessionText, !mentor.available && styles.bookSessionDisabledText]}>
+            {mentor.available ? 'Book Session' : 'Unavailable'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
-  const list = useMemo(() => {
-    console.log('Displaying all mentors without filters.');
-    return mentors; // Directly return all mentors without filtering
-  }, [mentors]);
+  const SessionCard = ({ session }) => (
+    <View style={styles.sessionCard}>
+      <View style={styles.sessionCardContent}>
+        <Image source={{ uri: session.image }} style={styles.sessionImage} />
+        <View style={styles.sessionInfo}>
+          <Text style={styles.sessionMentor}>{session.mentor}</Text>
+          <Text style={styles.sessionTopic}>{session.topic}</Text>
+          <View style={styles.sessionDetails}>
+            <View style={styles.sessionDetail}>
+              <Text style={styles.detailIcon}>📅</Text>
+              <Text style={styles.detailText}>{session.date}</Text>
+            </View>
+            <View style={styles.sessionDetail}>
+              <Text style={styles.detailIcon}>🕐</Text>
+              <Text style={styles.detailText}>{session.time}</Text>
+            </View>
+          </View>
+          <View style={styles.sessionBadges}>
+            <View style={styles.sessionBadge}>
+              <Text style={styles.badgeIcon}>📹</Text>
+              <Text style={styles.badgeText}>{session.type}</Text>
+            </View>
+            <View style={styles.sessionBadgeOutline}>
+              <Text style={styles.badgeTextOutline}>{session.duration}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+      <View style={styles.sessionActions}>
+        <TouchableOpacity style={styles.rescheduleButton}>
+          <Text style={styles.rescheduleText}>Reschedule</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.joinSessionButton}>
+          <Text style={styles.joinSessionText}>Join Session</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
-  // Add debugging log to inspect the list variable
-  console.log('Mentor list to render:', list);
+  const EmptySessions = () => (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIcon}>
+        <Text style={styles.emptyIconText}>📅</Text>
+      </View>
+      <Text style={styles.emptyTitle}>No Upcoming Sessions</Text>
+      <Text style={styles.emptyDescription}>Book a session with a mentor to get started</Text>
+      <TouchableOpacity style={styles.browseMentorsButton} onPress={() => setActiveTab('browse')}>
+        <Text style={styles.browseMentorsText}>Browse Mentors</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
-  // Socket connection and real-time updates
-  useEffect(() => {
-    let cleanupFunctions = [];
-
-    const setupSocket = async () => {
-      try {
-        await socketService.connect();
-
-        // Listen for mentor availability updates
-        const availabilityCleanup = socketService.on('mentor_availability_update', (data) => {
-          console.log('Mentor availability update received:', data);
-          setMentors(prevMentors =>
-            prevMentors.map(mentor =>
-              mentor._id === data.mentorId
-                ? { ...mentor, available: data.available }
-                : mentor
-            )
-          );
-        });
-        cleanupFunctions.push(availabilityCleanup);
-
-        // Listen for new mentor availability
-        const newAvailabilityCleanup = socketService.on('new_mentor_availability', (data) => {
-          console.log('New mentor availability received:', data);
-          // Refresh mentors list to include new availability
-          loadMentors();
-        });
-        cleanupFunctions.push(newAvailabilityCleanup);
-
-        // Listen for booking updates
-        const bookingCleanup = socketService.on('booking_update', (data) => {
-          console.log('Booking update received:', data);
-          // Refresh mentors list on booking update
-          loadMentors();
-        });
-        cleanupFunctions.push(bookingCleanup);
-      } catch (error) {
-        console.error('Socket setup failed:', error);
-      }
-    };
-
-    setupSocket();
-
-    return () => {
-      cleanupFunctions.forEach(cleanup => cleanup && cleanup());
-    };
-  }, [loadMentors]);
-
-  // Updated UI to match the mentor dashboard design
   return (
-    <View style={{ flex: 1, backgroundColor: NEON_COLORS.background }}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Find Mentors</Text>
-        <View style={styles.searchContainer}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Text style={styles.backIcon}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Mentorship</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBar}>
+          <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
             placeholder="Search mentors..."
-            value={query}
-            onChangeText={setQuery}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#9CA3AF"
           />
+          <TouchableOpacity style={styles.filterButton}>
+            <Text style={styles.filterIcon}>⚙️</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabsContainer}>
+      <View style={styles.tabs}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'browse' && styles.activeTab]}
           onPress={() => setActiveTab('browse')}
         >
-          <Text style={styles.tabText}>Browse Mentors</Text>
+          <Text style={[styles.tabText, activeTab === 'browse' && styles.activeTabText]}>
+            Browse Mentors
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'sessions' && styles.activeTab]}
           onPress={() => setActiveTab('sessions')}
         >
-          <Text style={styles.tabText}>My Sessions</Text>
+          <Text style={[styles.tabText, activeTab === 'sessions' && styles.activeTabText]}>
+            My Sessions
+          </Text>
         </TouchableOpacity>
       </View>
 
       {/* Content */}
-      <ScrollView contentContainerStyle={styles.contentContainer}>
+      <View style={styles.content}>
         {activeTab === 'browse' ? (
           <FlatList
-            data={list}
+            data={filteredMentors}
+            renderItem={({ item }) => <MentorCard mentor={item} />}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <View style={styles.mentorCard}>
-                {item.image && <Image source={item.image} style={styles.mentorImage} />}
-                <View style={styles.mentorDetails}>
-                  <Text style={styles.mentorName}>{item.name}</Text>
-                  <Text style={styles.mentorSpecialization}>{item.specialization}</Text>
-                  <Text style={styles.mentorExperience}>{item.experience}</Text>
-                  <Text style={styles.mentorRating}>⭐ {item.rating} | {item.sessionsCompleted} sessions</Text>
-                  <View style={styles.buttonContainer}>
-                    <TouchableOpacity
-                      style={styles.button}
-                      onPress={() => navigation.navigate('MentorDetail', { mentor: item })}
-                    >
-                      <Text style={styles.buttonText}>View Profile</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.button, styles.bookButton]}
-                      onPress={() => navigation.navigate('BookSession', { mentor: item })}
-                    >
-                      <Text style={styles.buttonText}>Book Session</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            )}
-            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.mentorsList}
           />
         ) : (
-          <Text style={styles.noSessionsText}>No upcoming sessions</Text>
+          <ScrollView showsVerticalScrollIndicator={false} style={styles.sessionsContainer}>
+            {upcomingSessions.length > 0 ? (
+              upcomingSessions.map((session) => (
+                <SessionCard key={session.id} session={session} />
+              ))
+            ) : (
+              <EmptySessions />
+            )}
+          </ScrollView>
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB', // gray-50 equivalent
+  },
   header: {
-    paddingTop: 40,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    paddingTop: 50,
     paddingBottom: 16,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'linear-gradient(90deg, #3B82F6, #6366F1)', // Gradient background
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+  },
+  backButton: {
+    padding: 8,
+  },
+  backIcon: {
+    fontSize: 24,
+    color: '#374151',
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#E0E7FF', // Light neon text
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
   },
   searchContainer: {
-    padding: 8,
-    backgroundColor: '#1E293B', // Dark background for search
-    borderRadius: 8,
-    marginHorizontal: 16,
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#3B82F6', // Neon blue border
-    flex: 1,
+    borderColor: '#E5E7EB',
+  },
+  searchIcon: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    marginRight: 12,
   },
   searchInput: {
-    height: 40,
-    color: '#E0E7FF', // Light neon text
+    flex: 1,
+    fontSize: 16,
+    color: '#374151',
   },
-  tabsContainer: {
+  filterButton: {
+    padding: 4,
+  },
+  filterIcon: {
+    fontSize: 16,
+    color: '#9CA3AF',
+  },
+  tabs: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#3B82F6', // Neon blue border
-    marginHorizontal: 16,
-    marginBottom: 8,
+    backgroundColor: '#F9FAFB',
+    marginBottom: 16,
   },
   tab: {
     flex: 1,
     paddingVertical: 12,
     alignItems: 'center',
-    justifyContent: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
   activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#10B981', // Neon green for active tab
+    borderBottomColor: '#6366F1',
   },
   tabText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
-    color: '#E0E7FF', // Light neon text
+    color: '#6B7280',
   },
-  contentContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  activeTabText: {
+    color: '#6366F1',
+  },
+  content: {
+    flex: 1,
+  },
+  mentorsList: {
+    padding: 16,
   },
   mentorCard: {
-    flexDirection: 'row',
-    backgroundColor: '#1E293B', // Original dark card background
-    borderRadius: 15,
-    marginBottom: 15,
-    overflow: 'hidden',
-    elevation: 5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
     borderWidth: 1,
-    borderColor: '#3B82F6', // Original neon blue border
+    borderColor: 'transparent',
   },
-  image: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    margin: 8,
-  },
-  infoContainer: {
-    flex: 1,
-    padding: 8,
-  },
-  name: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#E0E7FF', // Light neon text
-  },
-  specialization: {
-    fontSize: 14,
-    color: '#94A3B8', // Muted neon text
-    marginVertical: 4,
-  },
-  details: {
-    fontSize: 12,
-    color: '#777',
-  },
-  buttonContainer: {
+  mentorCardContent: {
     flexDirection: 'row',
-    marginTop: 8,
+    marginBottom: 16,
   },
-  button: {
+  mentorImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: '#E0E7FF',
+  },
+  mentorInfo: {
     flex: 1,
-    backgroundColor: '#007bff',
-    borderRadius: 8,
+  },
+  mentorName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
+  ratingStar: {
+    fontSize: 12,
+    color: '#F59E0B',
+    marginRight: 4,
+  },
+  ratingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#F59E0B',
+  },
+  mentorSpecialization: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  mentorDetails: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  mentorActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  viewProfileButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 20,
     paddingVertical: 8,
-    marginHorizontal: 4,
     alignItems: 'center',
   },
-  bookButton: {
-    backgroundColor: '#28a745',
+  viewProfileText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  bookSessionButton: {
+    flex: 1,
+    backgroundColor: '#6366F1',
+    borderRadius: 20,
+    paddingVertical: 8,
+    alignItems: 'center',
   },
-  noSessionsText: {
-    textAlign: 'center',
-    color: '#94A3B8',
+  bookSessionDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  bookSessionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  bookSessionDisabledText: {
+    color: '#FFFFFF',
+  },
+  sessionsContainer: {
     padding: 16,
+  },
+  sessionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  sessionCardContent: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  sessionImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    marginRight: 12,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sessionInfo: {
+    flex: 1,
+  },
+  sessionMentor: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  sessionTopic: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  sessionDetails: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  sessionDetail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  detailIcon: {
+    fontSize: 12,
+    marginRight: 4,
+    color: '#6B7280',
+  },
+  detailText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  sessionBadges: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sessionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgeIcon: {
+    fontSize: 10,
+    marginRight: 4,
+  },
+  badgeText: {
+    fontSize: 10,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  sessionBadgeOutline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgeTextOutline: {
+    fontSize: 10,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  sessionActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  rescheduleButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 20,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  rescheduleText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  joinSessionButton: {
+    flex: 1,
+    backgroundColor: '#111827',
+    borderRadius: 20,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  joinSessionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyIconText: {
+    fontSize: 32,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  emptyDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  browseMentorsButton: {
+    backgroundColor: '#6366F1',
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  browseMentorsText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
 });
 

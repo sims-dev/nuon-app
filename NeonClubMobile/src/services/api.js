@@ -1,21 +1,32 @@
-import axios from 'axios';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CONFIG } from '../utils/config';
-import { auth as firebaseAuth } from '../firebase';
 import { IP_ADDRESS } from '../../config/ipConfig';
 
-const BASE_URL = `http://${IP_ADDRESS}:5000/api`; // Updated to use centralized IP_ADDRESS from ipConfig.js
-// Single authoritative base for dev specified in CONFIG
+const BASE_URL = `http://${IP_ADDRESS}:5000/api`;
 
-// Always start with CONFIG-derived BASE_URL so physical devices use your LAN IP automatically.
-// We'll still attempt localhost and emulator bridges as automatic failovers if needed.
-const initialBase = BASE_URL;
-
-const api = axios.create({
-  baseURL: initialBase,
-  timeout: CONFIG.TIMEOUT,
-});
+// Helper for fetch requests
+async function fetchApi(endpoint, { method = 'GET', body, params, headers = {} } = {}) {
+  let url = BASE_URL + endpoint;
+  if (params && typeof params === 'object') {
+    const query = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+    url += `?${query}`;
+  }
+  const token = await AsyncStorage.getItem('token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  const options = {
+    method,
+    headers,
+    ...(body ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
+  };
+  const res = await fetch(url, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw { response: { status: res.status, data }, message: data.message || res.statusText };
+  return { data };
+}
 
 // Remove any previously saved overrides to avoid conflicting bases
 (async () => {
@@ -26,27 +37,26 @@ const api = axios.create({
 
 // Keep signature but make it a no-op to enforce a single base
 export async function setBaseOverride() {
-  return api.defaults.baseURL;
+  return BASE_URL;
 }
 
 // ultra-light GET cache to reduce repeated loads and perceived latency
 const __getCache = new Map(); // key -> { ts, data }
 const __CACHE_TTL = 60 * 1000; // 60s
 async function cachedGet(url, config = {}) {
-  console.log(url)
-  const key = JSON.stringify([api.defaults.baseURL, url, config.params || null]);
+  const key = JSON.stringify([BASE_URL, url, config.params || null]);
   const now = Date.now();
   const cached = __getCache.get(key);
   if (cached && (now - cached.ts) < __CACHE_TTL) {
     return { data: cached.data };
   }
-  const res = await api.get(url, config);
+  const res = await fetchApi(url, { method: 'GET', params: config.params });
   __getCache.set(key, { ts: now, data: res.data });
   return res;
 }
 
 export const getBaseURL = () => BASE_URL;
-export const getCurrentBaseURL = () => api.defaults.baseURL;
+export const getCurrentBaseURL = () => BASE_URL;
 
 // Expose quick dev helpers on global to tweak base without rebuilding
 if (__DEV__) {
@@ -54,7 +64,7 @@ if (__DEV__) {
     // @ts-ignore
     global.__setApiBase = setBaseOverride;
     // @ts-ignore
-    global.__apiBase = () => api.defaults.baseURL;
+    global.__apiBase = () => BASE_URL;
   } catch {}
 }
 
@@ -62,35 +72,8 @@ if (__DEV__) {
 let __lastProbeAt = 0;
 const __PROBE_TTL_MS = 120_000; // 2 minutes cache to avoid repeated probes
 export async function probeAndFixBase() {
-  const now = Date.now();
-  if (now - __lastProbeAt < __PROBE_TTL_MS) {
-    return api.defaults.baseURL;
-  }
-  __lastProbeAt = now;
-
-  // Try localhost first (for development)
-  const candidates = [
-    `http://${IP_ADDRESS}:3000/api`, // Updated to port 3000
-    'http://192.168.0.116:3000/api', // Updated IP address
-    'http://10.0.2.2:3000/api', // Android emulator
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      console.log(`[api][probe] Testing ${candidate}...`);
-      const testApi = axios.create({ baseURL: candidate, timeout: 3000 });
-      await testApi.get('/test'); // Use /test instead of /health to avoid news route conflict
-      console.log(`[api][probe] Success with ${candidate}`);
-      api.defaults.baseURL = candidate;
-      return candidate;
-    } catch (e) {
-      console.log(`[api][probe] Failed ${candidate}:`, e.message);
-      console.log(`[api][probe] Error details:`, e.response?.data || e.code || e);
-    }
-  }
-
-  console.log('[api][probe] All candidates failed, keeping current base');
-  return api.defaults.baseURL;
+  // Only use BASE_URL for fetch
+  return BASE_URL;
 }
 
 // Pre-probe localhost (adb reverse) in dev to avoid initial request failures
@@ -113,128 +96,18 @@ let __cachedIdToken = null;
 let __cachedAt = 0;
 const TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-api.interceptors.request.use(async (config) => {
-  // Comment out Firebase authentication - using only JWT tokens from AsyncStorage
-  /*
-  try {
-    const currentUser = firebaseAuth().currentUser;
-    if (currentUser) {
-      let idToken = __cachedIdToken;
-      const now = Date.now();
-      if (!idToken || (now - __cachedAt) > TOKEN_TTL_MS) {
-        idToken = await currentUser.getIdToken();
-        if (idToken) { __cachedIdToken = idToken; __cachedAt = now; }
-      }
-      if (idToken) {
-        config.headers.Authorization = `Bearer ${idToken}`;
-      }
-    } else {
-      const token = await AsyncStorage.getItem('token');
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    }
-  } catch (err) {
-    const token = await AsyncStorage.getItem('token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-  }
-  */
+// All axios interceptors removed; only fetch and named exports are used now
 
-  // Use only JWT tokens from AsyncStorage (MongoDB authentication)
-  // But skip adding Authorization header for registration endpoint
-  if (config.url !== '/register') {
-    const token = await AsyncStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-
-  // Remove obviously invalid Authorization values (prevents breaking dev-bypass)
-  if (config.headers.Authorization && !/^Bearer\s+[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(config.headers.Authorization)) {
-    delete config.headers.Authorization;
-  }
-  // Do not use any dev-bypass headers; require proper auth via JWT tokens
-  // attach a client-generated request id for correlation
-  if (!config.headers['x-request-id']) {
-    config.headers['x-request-id'] = genReqId();
-  }
-  config.headers['Content-Type'] = 'application/json';
-  if (__DEV__) {
-    try {
-      const method = (config.method || 'GET').toUpperCase();
-      // Avoid logging bodies for large posts
-      // eslint-disable-next-line no-console
-      console.log(`[api][request] ${method} ${config.baseURL}${config.url}`, {
-        hasAuth: Boolean(config.headers.Authorization),
-        hasBypass: Boolean(config.headers['x-dev-bypass']),
-        reqId: config.headers['x-request-id'],
-      });
-    } catch {}
-  }
-  return config;
-});
-
-// Add response interceptor for error handling
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    // Log error context for debugging
-    try {
-      const originalConfig = error?.config || {};
-      const reqId = originalConfig.headers?.['x-request-id'];
-      const resp = error.response;
-      // eslint-disable-next-line no-console
-      console.log('[api][error]', {
-        reqId,
-        url: (error?.config?.baseURL || '') + (error?.config?.url || ''),
-        code: error?.code,
-        status: resp?.status,
-        statusText: resp?.statusText,
-        message: error?.message,
-        responseData: resp?.data,
-        networkDetails: {
-          baseURL: error?.config?.baseURL,
-          timeout: error?.config?.timeout,
-          headers: error?.config?.headers,
-          platform: Platform.OS,
-          isConnected: true, // Assume connected unless proven otherwise
-        },
-      });
-    } catch {}
-
-    // If network error and we haven't tried probing yet, try to fix base URL
-    if (error.code === 'ERR_NETWORK' || error.code === 'ECONNREFUSED') {
-      console.log('[api][error] Network error detected, attempting to probe and fix base URL...');
-      try {
-        const newBase = await probeAndFixBase();
-        if (newBase !== error.config.baseURL) {
-          console.log(`[api][error] Base URL updated from ${error.config.baseURL} to ${newBase}, retrying request...`);
-          // Retry the request with new base URL
-          const retryConfig = { ...error.config, baseURL: newBase };
-          return api.request(retryConfig);
-        }
-      } catch (probeError) {
-        console.log('[api][error] Base URL probe failed:', probeError.message);
-      }
-    }
-
-    if (error.response?.status === 401) {
-      await AsyncStorage.clear();
-    }
-    return Promise.reject(error);
-  }
-);
+// Removed all axios error handling blocks. Use fetch error handling in API functions if needed.
 
 // Auth APIs
 export const authAPI = {
-  // Legacy methods (for backward compatibility)
-  register: (userData) => api.post('/register', userData),
-  login: (credentials) => api.post('/login', credentials),
-  getProfile: () => api.get('/user/me'),
-
-  // OTP Authentication
+  register: (userData) => fetchApi('/register', { method: 'POST', body: userData }),
+  login: (credentials) => fetchApi('/login', { method: 'POST', body: credentials }),
+  getProfile: () => fetchApi('/user/me'),
   sendOTP: async (endpoint, data) => {
     try {
-      const response = await api.post(endpoint, data);
-      // For development, show the OTP in response if available
+      const response = await fetchApi(endpoint, { method: 'POST', body: data });
       if (__DEV__ && response.data?.debugOtp) {
         console.log(`[DEV OTP] Use this OTP to verify: ${response.data.debugOtp}`);
       }
@@ -244,16 +117,14 @@ export const authAPI = {
       throw error;
     }
   },
-  verifyOTP: (data) => api.post('/otp/verify', data),
-
-  // Profile management
-  updateProfile: (profileData) => api.put('/profile', profileData),
+  verifyOTP: (data) => fetchApi('/otp/verify', { method: 'POST', body: data }),
+  updateProfile: (profileData) => fetchApi('/profile', { method: 'PUT', body: profileData }),
 };
 
 // User/Settings APIs
 export const settingsAPI = {
-  getNotificationSettings: () => api.get('/profile/notification-settings'),
-  updateNotificationSettings: (settings) => api.put('/profile/notification-settings', settings),
+  getNotificationSettings: () => fetchApi('/profile/notification-settings'),
+  updateNotificationSettings: (settings) => fetchApi('/profile/notification-settings', { method: 'PUT', body: settings }),
 };
 
 // Catalog APIs
@@ -264,7 +135,7 @@ export const catalogAPI = {
     const tryEndpoints = ['/catalog', '/courses', '/items'];
     for (let ep of tryEndpoints) {
       try {
-        const res = await api.get(ep);
+        const res = await fetchApi(ep);
         // backend may return grouped object { events:[], workshops:[], courses:[] }
         if (res.data) {
           if (Array.isArray(res.data)) return { data: res.data };
@@ -289,7 +160,7 @@ export const catalogAPI = {
     const tryEndpoints = [`/catalog/${id}`, `/courses/${id}`, `/items/${id}`];
     for (let ep of tryEndpoints) {
       try {
-        const res = await api.get(ep);
+        const res = await fetchApi(ep);
         return res;
       } catch (e) {
         // continue
@@ -303,7 +174,7 @@ export const catalogAPI = {
 export const courseAPI = {
   getCourses: () => cachedGet('/courses'),
   getCourse: (id) => cachedGet(`/courses/${id}`),
-  purchaseCourse: (courseId, isFree = false) => api.post(`/courses/${courseId}/purchase`, isFree ? { paymentMethod: 'free', paymentId: 'free', courseId } : { courseId }),
+  purchaseCourse: (courseId, isFree = false) => fetchApi(`/courses/${courseId}/purchase`, { method: 'POST', body: isFree ? { paymentMethod: 'free', paymentId: 'free', courseId } : { courseId } }),
   getMyCourses: () => cachedGet('/courses/my'),
 };
 
@@ -311,7 +182,7 @@ export const courseAPI = {
 export const eventAPI = {
   getEvents: () => cachedGet('/events'),
   getEvent: (id) => cachedGet(`/events/${id}`),
-  registerForEvent: (eventId, paymentData) => api.post(`/events/${eventId}/register`, paymentData),
+  registerForEvent: (eventId, paymentData) => fetchApi(`/events/${eventId}/register`, { method: 'POST', body: paymentData }),
   getMyEvents: () => cachedGet('/events/my/events'),
   getAllEvents: () => cachedGet('/events'),
 };
@@ -320,7 +191,7 @@ export const eventAPI = {
 export const workshopAPI = {
   getWorkshops: () => cachedGet('/workshops'),
   getWorkshop: (id) => cachedGet(`/workshops/${id}`),
-  registerForWorkshop: (workshopId, paymentData) => api.post(`/workshops/${workshopId}/register`, paymentData),
+  registerForWorkshop: (workshopId, paymentData) => fetchApi(`/workshops/${workshopId}/register`, { method: 'POST', body: paymentData }),
   getMyWorkshops: () => cachedGet('/workshops/my/workshops'),
   getWorkshopMaterials: (workshopId) => cachedGet(`/workshops/${workshopId}/materials`),
   getAllWorkshops: () => cachedGet('/workshops'),
@@ -328,40 +199,40 @@ export const workshopAPI = {
 
 // Progress APIs
 export const progressAPI = {
-  getUserProgress: (courseId) => api.get(`/progress/${courseId}`),
-  updateLessonProgress: (courseId, lessonId, data) => api.put(`/progress/${courseId}/lessons/${lessonId}`, data),
-  getAllUserProgress: () => api.get('/progress'),
-  downloadCertificate: (courseId) => api.get(`/progress/${courseId}/certificate`),
+  getUserProgress: (courseId) => fetchApi(`/progress/${courseId}`),
+  updateLessonProgress: (courseId, lessonId, data) => fetchApi(`/progress/${courseId}/lessons/${lessonId}`, { method: 'PUT', body: data }),
+  getAllUserProgress: () => fetchApi('/progress'),
+  downloadCertificate: (courseId) => fetchApi(`/progress/${courseId}/certificate`),
 };
 
 // Booking APIs
 export const bookingAPI = {
-  createBooking: (bookingData) => api.post('/bookings', bookingData),
-  getMyBookings: () => api.get('/bookings/my-bookings'),
-  updateBooking: (id, data) => api.patch(`/bookings/${id}`, data),
+  createBooking: (bookingData) => fetchApi('/bookings', { method: 'POST', body: bookingData }),
+  getMyBookings: () => fetchApi('/bookings/my-bookings'),
+  updateBooking: (id, data) => fetchApi(`/bookings/${id}`, { method: 'PATCH', body: data }),
 };
 
 // Payment APIs
 export const paymentAPI = {
-  initiatePayment: (paymentData) => api.post('/payments/initiate', paymentData),
-  initiateMentorshipPayment: (paymentData) => api.post('/payments/mentorship-payment', paymentData),
-  getPaymentHistory: () => api.get('/payments/history'),
+  initiatePayment: (paymentData) => fetchApi('/payments/initiate', { method: 'POST', body: paymentData }),
+  initiateMentorshipPayment: (paymentData) => fetchApi('/payments/mentorship-payment', { method: 'POST', body: paymentData }),
+  getPaymentHistory: () => fetchApi('/payments/history'),
 };
 
 // Assessment APIs
 export const assessmentAPI = {
-  getAssessments: () => api.get('/assessments'),
-  getAssessment: (id) => api.get(`/assessments/${id}`),
-  submitAssessment: (id, answers) => api.post(`/assessments/${id}/submit`, { answers }),
-  getResults: (id) => api.get(`/assessments/${id}/result`),
+  getAssessments: () => fetchApi('/assessments'),
+  getAssessment: (id) => fetchApi(`/assessments/${id}`),
+  submitAssessment: (id, answers) => fetchApi(`/assessments/${id}/submit`, { method: 'POST', body: { answers } }),
+  getResults: (id) => fetchApi(`/assessments/${id}/result`),
 };
 
 // NCC APIs
 export const nccAPI = {
-  getNCCStatus: () => api.get('/ncc'),
-  updateNCCStep: (stepData) => api.post('/ncc/step', stepData),
-  markInterest: () => api.post('/ncc/interest'),
-  getUiNumber: () => api.get('/ncc/ui-number'),
+  getNCCStatus: () => fetchApi('/ncc'),
+  updateNCCStep: (stepData) => fetchApi('/ncc/step', { method: 'POST', body: stepData }),
+  markInterest: () => fetchApi('/ncc/interest', { method: 'POST' }),
+  getUiNumber: () => fetchApi('/ncc/ui-number'),
 };
 
 // News APIs
@@ -414,28 +285,26 @@ export const mentorAPI = {
       return { data: [] };
     }
   },
-  getAvailability: (mentorId, params = {}) => api.get(`/mentor/${mentorId}/availability`, { params }),
-  bookMentorship: (mentorData) => api.post('/mentor/book', mentorData),
-  getMyBookings: () => api.get('/mentor/bookings/my'),
+  getAvailability: (mentorId, params = {}) => fetchApi(`/mentor/${mentorId}/availability`, { params }),
+  bookMentorship: (mentorData) => fetchApi('/mentor/book', { method: 'POST', body: mentorData }),
+  getMyBookings: () => fetchApi('/mentor/bookings/my'),
   apply: (data) => {
-    // Allow both JSON and FormData. If FormData, don't force JSON content-type.
     if (typeof FormData !== 'undefined' && data instanceof FormData) {
-      return api.post('/mentor/apply', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return fetchApi('/mentor/apply', { method: 'POST', body: data, headers: { 'Content-Type': 'multipart/form-data' } });
     }
-    return api.post('/mentor/apply', data);
+    return fetchApi('/mentor/apply', { method: 'POST', body: data });
   },
 };
 
 // Notifications APIs
 export const notificationsAPI = {
-  list: (userId) => api.get('/notifications', { params: userId ? { userId } : undefined }),
-  create: (payload) => api.post('/notifications', payload),
+  list: (userId) => fetchApi('/notifications', { params: userId ? { userId } : undefined }),
+  create: (payload) => fetchApi('/notifications', { method: 'POST', body: payload }),
 };
 
 // Activities feed APIs
 export const activitiesAPI = {
-  getMy: (type) => api.get('/activities/my', { params: type ? { type } : {} }),
-  // Enrich logs with a light snapshot of the current user for easier admin triage
+  getMy: (type) => fetchApi('/activities/my', { params: type ? { type } : {} }),
   create: async (payload) => {
     try {
       const raw = await AsyncStorage.getItem('user');
@@ -447,9 +316,9 @@ export const activitiesAPI = {
           merged = { ...payload, meta: { ...(payload?.meta || {}), client } };
         } catch {}
       }
-      return api.post('/activities', merged);
+      return fetchApi('/activities', { method: 'POST', body: merged });
     } catch {
-      return api.post('/activities', payload);
+      return fetchApi('/activities', { method: 'POST', body: payload });
     }
   },
 };
@@ -457,7 +326,7 @@ export const activitiesAPI = {
 // Fetch mentors function
 export async function fetchPublicMentors() {
   try {
-    const response = await api.get('/mentor/public/mentors');
+    const response = await fetchApi('/mentor/public/mentors');
     console.log('Fetched mentors:', response.data);
     return response.data;
   } catch (error) {
@@ -466,4 +335,22 @@ export async function fetchPublicMentors() {
   }
 }
 
-export default api;
+export default {
+  fetchApi,
+  authAPI,
+  settingsAPI,
+  catalogAPI,
+  courseAPI,
+  eventAPI,
+  workshopAPI,
+  progressAPI,
+  bookingAPI,
+  paymentAPI,
+  assessmentAPI,
+  nccAPI,
+  newsAPI,
+  mentorAPI,
+  notificationsAPI,
+  activitiesAPI,
+  fetchPublicMentors,
+};

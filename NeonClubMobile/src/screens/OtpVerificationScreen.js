@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import api, { probeAndFixBase } from '../services/api';
+import { probeAndFixBase, authAPI } from '../services/api';
 import { NEON_COLORS } from '../utils/colors';
 
 const OtpVerificationScreen = () => {
@@ -31,7 +31,7 @@ const OtpVerificationScreen = () => {
       // Normalize to new backend contract
       const digits = (phoneNumber || '').replace(/\D/g, '').slice(0, 10);
       const payload = { phoneNumber: `+91${digits}` };
-      const response = await api.post('/otp/sendPhoneOTP', payload, { timeout: 8000 });
+      const response = await authAPI.sendOTP('/otp/sendPhoneOTP', payload);
       if (response.data.success) {
         // Always use dummy OTP 123456 for testing
         setOtp('123456');
@@ -57,7 +57,7 @@ const OtpVerificationScreen = () => {
       setLoading(true);
       try { await probeAndFixBase(); } catch {}
       const digits = (phoneNumber || '').replace(/\D/g, '').slice(0, 10);
-      const response = await api.post('/otp/verifyOTP', { type: 'phone', identifier: `+91${digits}`, otp }, { timeout: 8000 });
+      const response = await authAPI.verifyOTP({ type: 'phone', identifier: `+91${digits}`, otp });
       if (response.data.success) {
         Alert.alert('Success', 'OTP verified successfully');
         navigation.navigate('ProfileSetupScreen', { isNewUser: response.data.isNewUser });

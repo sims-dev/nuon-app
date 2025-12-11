@@ -29,6 +29,7 @@ import MentorFeedbackScreen from '../screens/MentorFeedbackScreen';
 import NewsListScreen from '../screens/NewsListScreen';
 import NewsViewerScreen from '../screens/NewsViewerScreen';
 import VideoPlayerScreen from '../screens/VideoPlayerScreen';
+import VideoSession from '../screens/VideoSession';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import HelpScreen from '../screens/HelpScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
@@ -196,6 +197,11 @@ const AppNavigator = () => {
             <Stack.Screen
               name="VideoPlayer"
               component={VideoPlayerScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="VideoSession"
+              component={VideoSession}
               options={{ headerShown: false }}
             />
             <Stack.Screen

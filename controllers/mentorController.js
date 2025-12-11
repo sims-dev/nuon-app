@@ -144,6 +144,38 @@ const getNurses = async (req, res) => {
   }
 };
 
+// Get mentor profile
+const getProfile = async (req, res) => {
+  try {
+    const mentorId = req.user._id || req.user.id;
+
+    const mentor = await User.findById(mentorId);
+
+    if (!mentor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mentor not found'
+      });
+    }
+
+    res.json({
+      name: mentor.name,
+      specialization: mentor.specialization,
+      yearsOfExperience: mentor.experience,
+      bio: mentor.bio,
+      organization: mentor.organization,
+      profilePicture: mentor.profilePicture
+    });
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error getting profile',
+      error: error.message
+    });
+  }
+};
+
 // Update mentor profile
 // Enhance debugging logs in updateProfile
 const updateProfile = async (req, res) => {
@@ -156,10 +188,10 @@ const updateProfile = async (req, res) => {
     // Ensure isProfileComplete is set to true
     updates.isProfileComplete = true;
 
-    // Attempt to update mentor profile
-    const updatedMentor = await Mentor.findByIdAndUpdate(mentorId, updates, { new: true });
+    // Attempt to update mentor profile in User model
+    const updatedUser = await User.findByIdAndUpdate(mentorId, updates, { new: true });
 
-    if (!updatedMentor) {
+    if (!updatedUser) {
       console.log('Mentor not found in database:', mentorId);
       return res.status(404).json({
         success: false,
@@ -167,11 +199,11 @@ const updateProfile = async (req, res) => {
       });
     }
 
-    console.log('Profile updated successfully in database:', updatedMentor);
+    console.log('Profile updated successfully in database:', updatedUser);
     res.json({
       success: true,
       message: 'Profile updated successfully',
-      mentor: updatedMentor
+      mentor: updatedUser
     });
   } catch (error) {
     console.error('Error during profile update:', error);
@@ -482,17 +514,50 @@ const deleteAvailabilitySlot = async (req, res) => {
 const getPublicMentors = async (req, res) => {
   try {
     console.log('Fetching public mentors...');
-    const query = { isPublic: true, isActive: true };
-    console.log('Query:', query);
 
-    // Log total mentors in the database
-    const totalMentors = await Mentor.countDocuments();
-    console.log(`Total mentors in the database: ${totalMentors}`);
+    // First try Mentor collection
+    let mentors = await Mentor.find({ isPublic: true, isActive: true });
+    console.log(`Found ${mentors.length} mentors in Mentor collection.`);
 
-    // Log mentors that match the query
-    const mentors = await Mentor.find(query);
-    console.log(`Query Result: ${JSON.stringify(mentors, null, 2)}`);
-    console.log(`Found ${mentors.length} public mentors.`);
+    // If no mentors in Mentor collection, try User collection with role mentor
+    if (mentors.length === 0) {
+      console.log('No mentors in Mentor collection, checking User collection...');
+      const users = await User.find({ role: 'mentor', isActive: { $ne: false } });
+      mentors = users.map(user => ({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        specialization: Array.isArray(user.specialization) ? user.specialization : (user.specialization ? [user.specialization] : []),
+        qualification: user.qualification,
+        department: user.department,
+        hospital: user.hospital,
+        experience: user.experience || 0,
+        bio: user.bio || 'Experienced healthcare professional',
+        hourlyRate: user.hourlyRate || 500,
+        availability: user.availability || 'available',
+        profileImage: user.profilePicture,
+        profileImages: user.profileImages || [],
+        videos: user.videos || [],
+        rating: user.rating || 4.8,
+        totalSessions: user.totalSessions || Math.floor(Math.random() * 50) + 10,
+        completedSessions: user.completedSessions || Math.floor(Math.random() * 45) + 5,
+        totalStudents: user.totalStudents || Math.floor(Math.random() * 20) + 5,
+        location: user.location,
+        city: user.city,
+        state: user.state,
+        country: user.country || 'India',
+        linkedin: user.linkedin,
+        website: user.website,
+        languages: user.languages || ['English'],
+        teachingStyle: user.teachingStyle,
+        preferredTopics: user.preferredTopics || [],
+        isVerified: user.isVerified || false,
+        isPublic: true,
+        isActive: true
+      }));
+      console.log(`Found ${mentors.length} mentors in User collection.`);
+    }
 
     res.json(mentors);
   } catch (error) {
@@ -846,13 +911,59 @@ const getAllMentors = async (req, res) => {
   }
 };
 
+// Upload profile picture
+const uploadProfilePicture = async (req, res) => {
+  try {
+    const mentorId = req.user._id || req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image file provided'
+      });
+    }
+
+    const imageUrl = `/uploads/images/${req.file.filename}`;
+
+    // Update mentor profile picture in User model
+    const updatedUser = await User.findByIdAndUpdate(
+      mentorId,
+      { profilePicture: imageUrl },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mentor not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile picture uploaded successfully',
+      url: imageUrl
+    });
+  } catch (error) {
+    console.error('Upload profile picture error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error uploading profile picture',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getStats,
   getBookings,
   getSessions,
   getFeedback,
   getNurses,
+  getProfile,
   updateProfile,
+  uploadProfilePicture,
+  upload, // Export the multer upload middleware
   createAvailabilitySlot,
   getMentorAvailability,
   updateAvailabilitySlot,

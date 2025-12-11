@@ -25,8 +25,14 @@ router.get('/feedback', auth, mentorController.getFeedback);
 // Get nurses mentored (protected)
 router.get('/nurses', auth, mentorController.getNurses);
 
+// Get mentor profile (protected)
+router.get('/profile', auth, mentorController.getProfile);
+
 // Update mentor profile (protected)
 router.put('/profile', auth, mentorController.updateProfile);
+
+// Upload mentor profile picture (protected)
+router.post('/profile-picture', auth, mentorController.upload.single('image'), mentorController.uploadProfilePicture);
 
 // MENTOR AVAILABILITY MANAGEMENT - Core Feature
 // Mentors manage their availability slots for users to book Zoom sessions

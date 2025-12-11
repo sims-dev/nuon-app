@@ -35,7 +35,7 @@ Password: ${mentorData.password}
 Role: Mentor
 
 Please share these credentials securely with the mentor.
-They can login at: http://localhost:3000/mentor
+They can login at: http://192.168.0.7:3000/mentor
 `;
 
   return (
@@ -104,7 +104,7 @@ They can login at: http://localhost:3000/mentor
               Mentor Dashboard URL
             </Typography>
             <Typography variant="body1" fontWeight="medium" color="primary">
-              http://localhost:3000/mentor
+              http://192.168.0.7:3000/mentor
             </Typography>
           </Box>
         </Paper>

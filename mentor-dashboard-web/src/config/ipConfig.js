@@ -1,5 +1,15 @@
 // Centralized configuration for IP address
+// This will work on any network by trying common development IPs
 
-const IP_ADDRESS = '192.168.29.81'; // Corrected IP address
+const getIPAddress = () => {
+  // Always use localhost for web apps to connect to backend
+  return 'localhost';
+};
 
-export { IP_ADDRESS };
+const IP_ADDRESS = getIPAddress();
+
+console.log(`🎯 Mentor Dashboard using IP: ${IP_ADDRESS}`);
+
+module.exports = {
+  IP_ADDRESS,
+};

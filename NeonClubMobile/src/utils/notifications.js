@@ -1,4 +1,4 @@
-import api from '../services/api';
+import { authAPI } from '../services/api';
 
 // Attempts to obtain an FCM token if @react-native-firebase/messaging is installed.
 // No-ops safely if messaging is not present or permissions denied.
@@ -17,7 +17,7 @@ export async function registerPushTokenIfAvailable() {
     if (!enabled) return null;
     const fcmToken = await messaging().getToken();
     if (!fcmToken) return null;
-  await api.put('/profile/push-token', { fcmToken }).catch(() => {});
+  await authAPI.updateProfile({ fcmToken }).catch(() => {});
     return fcmToken;
   } catch (_e) {
     return null;

@@ -10,10 +10,10 @@ import {
   Image,
 } from 'react-native';
 import Video from 'react-native-video';
-import { courseAPI, paymentAPI } from '../services/api';
+import { courseAPI, paymentAPI, getBaseURL } from '../services/api';
 import SuccessModal from '../components/SuccessModal';
 
-const BASE_URL = 'http://192.168.0.116:5000'; // Updated to correct IP
+const BASE_URL = getBaseURL().replace('/api', ''); // Use centralized base URL
 const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
 
 const CourseDetailScreen = ({ route, navigation }) => {

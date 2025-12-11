@@ -1,13 +1,13 @@
 // API Integration Helper - Copy this code to new UI screens
 
-import api, { catalogAPI, courseAPI, bookingAPI, mentorAPI } from '../services/api';
+import { catalogAPI, courseAPI, bookingAPI, mentorAPI, authAPI } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
 
 // Login Function - Add to LoginScreen
 export const handleLogin = async (email, password, navigation) => {
   try {
-    const response = await api.post('/login', { email, password });
+    const response = await authAPI.login({ email, password });
     const { token, user } = response.data;
 
     // Log the token for debugging (copy this from Metro/console)
@@ -30,7 +30,7 @@ export const handleLogin = async (email, password, navigation) => {
 // Register Function - Add to RegisterScreen
 export const handleRegister = async (userData, navigation) => {
   try {
-  await api.post('/register', userData);
+  await authAPI.register(userData);
     navigation.replace('Login');
   } catch (error) {
     throw new Error(error.response?.data?.message || 'Registration failed');

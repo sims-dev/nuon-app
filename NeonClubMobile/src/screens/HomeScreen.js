@@ -12,7 +12,7 @@ import {
 import { CommonActions } from '@react-navigation/native';
 import { useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
-import api, { activitiesAPI, newsAPI } from '../services/api';
+import { activitiesAPI, newsAPI, courseAPI, eventAPI, workshopAPI, mentorAPI, notificationsAPI, newsAPI as mainNewsAPI } from '../services/api';
 import { connectSocket, on as onSocket, disconnectSocket } from '../utils/socket';
 import NeonCard from '../components/NeonCard';
 import NeonButton from '../components/NeonButton';
@@ -22,6 +22,8 @@ import { NEON_COLORS } from '../utils/colors';
 import GradientCard from '../components/GradientCard';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
+import { useNavigation } from '@react-navigation/native';
+import EngageScreen from './EngageScreen';
 
 const CalendarIcon = () => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -56,7 +58,7 @@ const HomeScreen = ({ navigation }) => {
   const fetchAdditionalData = async () => {
       try {
         const [coursesResponse, latestRes, featuredRes] = await Promise.all([
-          api.get('/courses/my/courses'),
+          courseAPI.getMyCourses(),
           newsAPI.getLatest(),
           newsAPI.getFeatured(),
         ]);
@@ -70,9 +72,9 @@ const HomeScreen = ({ navigation }) => {
         // Fetch public events & workshops and merge as "New Activities"
         try {
           const [eventsRes, workshopsRes, publicCoursesRes] = await Promise.all([
-            api.get('/events'),
-            api.get('/workshops'),
-            api.get('/courses').catch(() => ({ data: [] })),
+            eventAPI.getEvents(),
+            workshopAPI.getWorkshops(),
+            courseAPI.getCourses().catch(() => ({ data: [] })),
           ]);
           const rawEvents = eventsRes?.data?.events || eventsRes?.data || [];
           const rawWorkshops = workshopsRes?.data?.workshops || workshopsRes?.data || [];
@@ -167,12 +169,20 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Welcome banner */}
+      {/* Welcome banner with profile and notification icons */}
       <LinearGradient colors={[NEON_COLORS.neonPurple, NEON_COLORS.neonBlue]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.welcomeBanner}>
-        <View style={{ flexDirection:'row', alignItems:'center' }}>
-          <Text style={[styles.welcomeHeading, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">Welcome{user?.name ? `, ${user.name}` : ''}</Text>
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between' }}>
+          <View style={{ flexDirection:'row', alignItems:'center' }}>
+            <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={{ marginRight: 12 }}>
+              <Text style={{ fontSize: 32, color: '#fff' }}>👤</Text>
+            </TouchableOpacity>
+            <Text style={[styles.welcomeHeading]} numberOfLines={1} ellipsizeMode="tail">Hello{user?.name ? ` Nurse ${user.name}` : ''} <Text style={{ fontSize: 20 }}>👋</Text></Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
+            <Text style={{ fontSize: 28, color: '#fff' }}>🔔</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.welcomeSub}>Continue your journey with Neon Club</Text>
+        <Text style={styles.welcomeSub}>Continue your courses, events & workshops</Text>
       </LinearGradient>
 
 
@@ -236,37 +246,7 @@ const HomeScreen = ({ navigation }) => {
       </View>
 
       {/* Nightingale Programme card */}
-      {/* Featured Courses */}
-      {featuredCourses.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitle}>Featured Courses</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('MyLearning')}>
-              <Text style={styles.linkText}>Browse All</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 12, paddingLeft: 6 }}>
-            {featuredCourses.map((c, idx) => (
-              <TouchableOpacity key={c._id || idx} style={styles.courseCardH} onPress={() => {
-                try {
-                  navigation.navigate('CourseDetail', { course: c });
-                } catch (error) {
-                  console.error('Navigation error:', error);
-                  Alert.alert('Error', 'Unable to open course details');
-                }
-              }}>
-                <View style={styles.courseThumb}>
-                  {c.thumbnail ? <Image source={{ uri: c.thumbnail }} style={styles.courseThumbImg} /> : null}
-                  <LinearGradient colors={['rgba(0,0,0,0)','rgba(0,0,0,0.65)']} start={{x:0,y:0}} end={{x:0,y:1}} style={styles.courseGrad} />
-                  <View style={styles.courseBadge}><Text style={styles.courseBadgeText}>{c.lessons?.length || 0} lessons</Text></View>
-                  <View style={styles.courseOverlay}><Text style={styles.courseTitleH} numberOfLines={2}>{c.title}</Text></View>
-                  {c.type === 'video' && <View style={styles.videoPlayIcon}><PlayIcon /></View>}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+      {/* Featured Courses section removed as per requirements */}
 
       {/* Nightingale Programme card */}
       <View style={{ paddingHorizontal: 20 }}>
@@ -302,7 +282,7 @@ const HomeScreen = ({ navigation }) => {
       <View style={styles.section}>
         <View style={styles.rowBetween}>
           <Text style={styles.sectionTitle}>New Activities</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Activities')}>
+          <TouchableOpacity onPress={() => navigation.navigate('Learning')}>
             <Text style={styles.linkText}>See All</Text>
           </TouchableOpacity>
         </View>
@@ -318,7 +298,7 @@ const HomeScreen = ({ navigation }) => {
               style={styles.activityCard}
               onPress={() => {
                 try { activitiesAPI.create({ type:'activity-tap', title: item.title, ref: item.id, meta: { kind: item.kind } }); } catch {}
-                navigation.navigate('Activities');
+                navigation.navigate('Learning');
               }}
             >
               <View style={styles.datePill}>
@@ -334,6 +314,11 @@ const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           );
         })}
+      </View>
+
+      {/* Engage Section */}
+      <View>
+        <EngageScreen />
       </View>
 
       {/* Quick Actions at the end */}

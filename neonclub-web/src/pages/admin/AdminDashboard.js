@@ -44,7 +44,7 @@ import UserManagement from '../../components/admin/UserManagement';
 import ContentManagement from '../../components/admin/ContentManagement';
 import AssessmentManagement from '../../components/admin/AssessmentManagement';
 import AnalyticsComponent from '../../components/admin/Analytics';
-import io from 'socket.io-client';
+// import io from 'socket.io-client'; // Disabled to prevent errors
 
 const drawerWidth = 240;
 
@@ -72,43 +72,20 @@ const AdminDashboard = () => {
     logout();
   };
 
-  // Socket connection and messaging logic
+  // Socket connection and messaging logic - disabled
   useEffect(() => {
     if (user) {
-      const newSocket = io('http://localhost:3000', {
-        auth: {
-          token: localStorage.getItem('token')
-        }
-      });
-
-      newSocket.on('connect', () => {
-        console.log('Admin connected to socket');
-        setIsConnected(true);
-      });
-
-      newSocket.on('disconnect', () => {
-        console.log('Admin disconnected from socket');
-        setIsConnected(false);
-      });
-
-      newSocket.on('mentor_message', (messageData) => {
-        setMessages(prev => [...prev, { ...messageData, direction: 'incoming' }]);
-      });
-
-      setSocket(newSocket);
+      // Socket disabled to prevent errors
+      setIsConnected(false);
 
       // Fetch mentors
       fetchMentors();
-
-      return () => {
-        newSocket.disconnect();
-      };
     }
   }, [user]);
 
   const fetchMentors = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/admin/users?role=mentor', {
+      const response = await fetch(`http://localhost:5000/api/admin/users?role=mentor`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

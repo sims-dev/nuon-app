@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, Image, TouchableOpacity, TextInput, Platform } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import api, { activitiesAPI, newsAPI } from '../services/api';
+import { activitiesAPI, newsAPI } from '../services/api';
 import { connectSocket, on as onSocket, disconnectSocket } from '../utils/socket';
 import { COLOR_SCHEME } from '../utils/colors';
 

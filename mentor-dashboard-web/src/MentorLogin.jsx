@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
 const DUMMY_CREDENTIALS = {
-  username: 'mentor1',
+  username: 'mentor-demo@neonclub.com',
   password: 'password123',
 };
 
@@ -87,7 +87,7 @@ const MentorLogin = () => {
       </form>
       <div style={{ marginTop: 24, fontSize: 13, color: '#aaa' }}>
         <div>Demo credentials:</div>
-        <div>Username: <b>mentor1</b></div>
+        <div>Username: <b>mentor-demo@neonclub.com</b></div>
         <div>Password: <b>password123</b></div>
       </div>
     </div>

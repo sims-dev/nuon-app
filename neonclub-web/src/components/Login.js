@@ -14,7 +14,13 @@ const Login = () => {
     setLoading(true);
     setError('');
 
-    const result = await login(credentials);
+    // Trim whitespace from credentials
+    const trimmedCredentials = {
+      email: credentials.email.trim(),
+      password: credentials.password.trim()
+    };
+
+    const result = await login(trimmedCredentials);
     
     if (result.success) {
       // Redirect based on user role

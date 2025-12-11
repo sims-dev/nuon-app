@@ -13,9 +13,7 @@
   For now we export a minimal stub that throws on verify when Firebase is not enabled.
 */
 
-const enabled = !!process.env.ENABLE_FIREBASE_ADMIN;
-
-if (enabled) {
+if (process.env.ENABLE_FIREBASE_ADMIN === 'true') {
   // Lazy-require the real firebase-admin only when explicitly enabled.
   try {
     const admin = require('firebase-admin');
@@ -83,30 +81,46 @@ if (enabled) {
   };
 }
 
-const admin = require('firebase-admin');
-const path = require('path');
+// Firebase admin is disabled by default to avoid requiring service account keys
+// Set ENABLE_FIREBASE_ADMIN=true in environment to enable Firebase admin features
 
-// Resolve the path to the service account key dynamically
-const serviceAccountPath = path.resolve(__dirname, 'service-account-key.json');
+const enabled = process.env.ENABLE_FIREBASE_ADMIN === 'true';
 
-try {
-  const serviceAccount = require(serviceAccountPath);
+if (enabled) {
+  const admin = require('firebase-admin');
+  const path = require('path');
 
-  // Initialize Firebase Admin SDK
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
+  // Resolve the path to the service account key dynamically
+  const serviceAccountPath = path.resolve(__dirname, 'service-account-key.json');
 
-  const firestore = admin.firestore();
-  console.log('Database connected'); // Log successful Firestore connection
+  try {
+    const serviceAccount = require(serviceAccountPath);
 
-  module.exports = { admin, firestore };
-} catch (err) {
-  console.error('Failed to initialize Firebase Admin SDK:', err.message);
+    // Initialize Firebase Admin SDK
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+
+    const firestore = admin.firestore();
+    console.log('Firebase Admin SDK initialized successfully');
+
+    module.exports = { admin, firestore };
+  } catch (err) {
+    console.error('Failed to initialize Firebase Admin SDK:', err.message);
+    module.exports = {
+      auth() {
+        return {
+          verifyIdToken: async () => { throw new Error('Firebase admin unavailable'); }
+        };
+      }
+    };
+  }
+} else {
+  console.log('Firebase Admin SDK disabled (set ENABLE_FIREBASE_ADMIN=true to enable)');
   module.exports = {
     auth() {
       return {
-        verifyIdToken: async () => { throw new Error('Firebase admin unavailable'); }
+        verifyIdToken: async () => { throw new Error('Firebase admin disabled'); }
       };
     }
   };

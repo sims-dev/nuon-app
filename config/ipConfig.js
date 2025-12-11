@@ -1,7 +1,19 @@
 // Centralized configuration for IP address
 
-const IP_ADDRESS = 'localhost'; // Updated to localhost for admin and mentor dashboards
+// Use React Native Platform API for mobile detection
+const MOBILE_IP = '192.168.0.209'; // LAN IP for mobile devices
+const WEB_IP = 'localhost';
 
-module.exports = {
-  IP_ADDRESS,
-};
+export function getIpAddress() {
+  try {
+    // Dynamically require Platform only if available
+    const Platform = require('react-native').Platform;
+    if (Platform && (Platform.OS === 'android' || Platform.OS === 'ios')) {
+      return MOBILE_IP;
+    }
+  } catch (e) {}
+  // Default to localhost for web
+  return WEB_IP;
+}
+
+export const IP_ADDRESS = getIpAddress();

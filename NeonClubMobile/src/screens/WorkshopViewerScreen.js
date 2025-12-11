@@ -14,7 +14,7 @@ const WorkshopViewerScreen = ({ route, navigation }) => {
   const daysLeft = isUpcoming ? Math.ceil((new Date(workshop.startDate) - new Date()) / (1000 * 60 * 60 * 24)) : 0;
   const isRegistered = !!workshop.hasRegistered;
   // Always use full URL for local uploads
-  const BASE_URL = 'http://192.168.0.116:5000'; // Updated to correct IP
+  const BASE_URL = 'http://192.168.0.7:5000'; // Updated to correct IP
   const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
   const image = getFullUrl(workshop.coverImage) || getFullUrl(workshop.imageUrl) || getFullUrl(workshop.thumbnail) || 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1600&auto=format&fit=crop';
 

@@ -132,7 +132,7 @@ const ActivitiesScreen = ({ navigation, route }) => {
   }, [tab, events, workshops, courses, query]);
 
   // Always use full URL for local uploads
-  const BASE_URL = 'http://192.168.0.116:5000'; // Updated to correct IP
+  const BASE_URL = 'http://192.168.0.7:5000'; // Updated to correct IP
   const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
 
   const renderItem = ({ item }) => {

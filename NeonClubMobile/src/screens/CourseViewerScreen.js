@@ -12,7 +12,7 @@ import {
 import { courseAPI, progressAPI } from '../services/api';
 
 // Helper to get full URL for uploads
-const BASE_URL = 'http://192.168.0.116:5000'; // Updated to correct IP
+const BASE_URL = 'http://192.168.0.7:5000'; // Updated to correct IP
 const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
 
 const CourseViewerScreen = ({ route, navigation }) => {

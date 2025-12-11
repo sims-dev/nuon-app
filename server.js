@@ -32,21 +32,42 @@ const activitiesRoutes = require('./routes/activities');
 const app = express();
 // Serve the uploads folder as static so images/videos are accessible
 app.use('/uploads', express.static('uploads'));
-// Create HTTP server and attach socket.io
-const http = require('http');
-const server = http.createServer(app);
-const { initializeSocket } = require('./lib/socket');
-const io = initializeSocket(server);
 
-// Middleware
-// Configure CORS to allow frontend origins used during development.
-// Add any dev hosts/ports your frontends run on (e.g. 3000, 5001, mobile emulators, etc.)
+// Define allowed origins for CORS
 const allowedOrigins = [
   `http://localhost:3000`,
   `http://localhost:3001`,
   `http://localhost:3002`,
   `http://localhost:5000`,
+  `http://localhost:8080`,
+  `http://localhost:8081`,
+  `http://localhost:8082`,
+  `http://${IP_ADDRESS}:3000`,
+  `http://${IP_ADDRESS}:3001`,
+  `http://${IP_ADDRESS}:3002`,
+  `http://${IP_ADDRESS}:5000`,
+  `http://${IP_ADDRESS}:8080`,
+  `http://${IP_ADDRESS}:8081`,
+  `http://${IP_ADDRESS}:8082`,
+  // Allow all localhost and IP addresses for development
+  `http://127.0.0.1:3000`,
+  `http://127.0.0.1:3001`,
+  `http://127.0.0.1:3002`,
+  `http://127.0.0.1:5000`,
+  `http://127.0.0.1:8080`,
+  `http://127.0.0.1:8081`,
+  `http://127.0.0.1:8082`,
 ];
+
+// Create HTTP server and attach socket.io
+const http = require('http');
+const server = http.createServer(app);
+const { initializeSocket } = require('./lib/socket');
+const io = initializeSocket(server, { cors: { origin: allowedOrigins, credentials: true } });
+
+// Middleware
+// Configure CORS to allow frontend origins used during development.
+// Add any dev hosts/ports your frontends run on (e.g. 3000, 5001, mobile emulators, etc.)
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -220,8 +241,9 @@ setTimeout(ensureAdmin, 2000);
 
 // Change the port to 5000 for testing
 const PORT = 5000;
-server.listen(PORT, () => {
-  console.log(`Server (with sockets) running on port ${PORT}`);
+// Bind to all interfaces (0.0.0.0) for accessibility from localhost and network
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server (with sockets) running on 0.0.0.0:${PORT} (accessible from localhost and network)`);
   try {
     const logger = require('./lib/logger');
     // list registered routes (one-time) to help diagnose missing endpoints

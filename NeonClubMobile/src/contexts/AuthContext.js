@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import api, { probeAndFixBase } from '../services/api';
+import { authAPI, probeAndFixBase } from '../services/api';
 import socketService from '../services/socket';
 
 export const AuthContext = createContext({
@@ -26,7 +26,7 @@ export const AuthProvider = ({ children }) => {
         await AsyncStorage.clear();
         setUser(null);
         setTokenState(null);
-        delete api.defaults.headers.common.Authorization;
+        // No need to delete api headers, handled by fetch
         console.log('[AuthContext] Cleared cached auth data for fresh onboarding flow');
       } catch (error) {
         console.error('[AuthContext] Error clearing auth data:', error);
@@ -40,12 +40,11 @@ export const AuthProvider = ({ children }) => {
 
   const signIn = async (credentials) => {
     try {
-      const res = await api.post('/login', credentials);
+      const res = await authAPI.login(credentials);
       const { token: tkn, user: usr } = res.data;
       // persist
       await AsyncStorage.setItem('token', tkn);
       await AsyncStorage.setItem('user', JSON.stringify(usr));
-      api.defaults.headers.common.Authorization = `Bearer ${tkn}`;
       setTokenState(tkn);
       setUser(usr);
 
@@ -73,18 +72,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signUp = async (userData) => {
-  const res = await api.post('/register', userData);
+    const res = await authAPI.register(userData);
     return res.data;
   };
 
   const setToken = (newToken) => {
     setTokenState(newToken);
     if (newToken) {
-      api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
       // Update socket token if connected
       socketService.updateToken(newToken);
     } else {
-      delete api.defaults.headers.common.Authorization;
       socketService.disconnect();
     }
   };
@@ -93,8 +90,6 @@ export const AuthProvider = ({ children }) => {
     await AsyncStorage.clear();
     setUser(null);
     setTokenState(null);
-    delete api.defaults.headers.common.Authorization;
-
     // Disconnect socket on sign out
     socketService.disconnect();
   };

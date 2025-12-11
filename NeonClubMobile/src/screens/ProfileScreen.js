@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { CommonActions } from '@react-navigation/native';
-import { useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
-import api, { courseAPI, nccAPI } from '../services/api';
+import { courseAPI, nccAPI, authAPI } from '../services/api';
 import { useSafePress } from '../hooks/useSafePress';
 
 const ProfileScreen = ({ navigation }) => {
@@ -30,9 +30,9 @@ const ProfileScreen = ({ navigation }) => {
         setLoading(true);
 
         const [coursesSettled, nccSettled, profileSettled] = await Promise.allSettled([
-          api.get('/courses/my/courses', { timeout: 6000 }).catch(() => ({ data: [] })),
-          api.get('/ncc', { timeout: 6000 }).catch(() => ({ data: null })),
-          api.get('/profile', { timeout: 6000 })
+          courseAPI.getMyCourses().catch(() => ({ data: [] })),
+          nccAPI.getNCCStatus().catch(() => ({ data: null })),
+          authAPI.getProfile()
         ]);
 
         if (coursesSettled.status === 'fulfilled') {
@@ -495,6 +495,29 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 12,
     color: '#94a3b8',
+  },
+  profileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    marginBottom: 16,
+  },
+  name: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  role: {
+    fontSize: 18,
+    color: 'gray',
+    marginBottom: 16,
+  },
+  detailsContainer: {
+    alignItems: 'flex-start',
+  },
+  details: {
+    fontSize: 16,
+    marginBottom: 4,
   },
 });
 

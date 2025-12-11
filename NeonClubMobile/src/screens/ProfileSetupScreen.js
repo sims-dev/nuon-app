@@ -11,11 +11,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { InteractionManager } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import api, { probeAndFixBase, getCurrentBaseURL } from '../services/api';
+import { probeAndFixBase, getCurrentBaseURL, authAPI } from '../services/api';
 import FullScreenLoader from '../components/FullScreenLoader';
 import { AuthContext } from '../contexts/AuthContext';
 import NEON_COLORS from '../utils/colors';
@@ -171,9 +170,7 @@ const ProfileSetupScreen = () => {
 
       // Use /register endpoint for profile completion
       console.log('[PROFILE SETUP] Making API call to /register...');
-      const response = await api.post('/register', payload, {
-        timeout: 10000
-      });
+      const response = await authAPI.register(payload);
 
       console.log('[PROFILE SETUP] API call successful, response status:', response.status);
       console.log('[PROFILE SETUP] Full response data:', response.data);
@@ -198,7 +195,7 @@ const ProfileSetupScreen = () => {
         // Fetch latest user profile to ensure isProfileComplete is true in context
         setTimeout(async () => {
           try {
-            const profileResp = await api.get(`/profile/${newUser.id || newUser._id}`);
+            const profileResp = await fetchApi(`/profile/${newUser.id || newUser._id}`);
             if (profileResp.data && profileResp.data.user) {
               await AsyncStorage.setItem('user', JSON.stringify(profileResp.data.user));
               updateUser(profileResp.data.user);

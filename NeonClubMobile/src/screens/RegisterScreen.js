@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import api from '../services/api';
+import { authAPI } from '../services/api';
 
 const RegisterScreen = ({ navigation }) => {
   const [formData, setFormData] = useState({
@@ -45,7 +45,7 @@ const RegisterScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      await api.post('/register', {
+      await authAPI.register({
         name,
         email,
         password,

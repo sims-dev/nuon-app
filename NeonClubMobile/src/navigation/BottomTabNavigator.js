@@ -3,43 +3,37 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text } from 'react-native';
 
 import HomeScreen from '../screens/HomeScreen';
-import ActivitiesScreen from '../screens/ActivitiesScreen';
-import MentorsScreen from '../screens/MentorsScreen';
+import LearningScreen from '../screens/LearningScreen';
+import EngageScreen from '../screens/EngageScreen';
+import MentorScreen from '../screens/MentorScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import MentorshipSessions from '../screens/MentorshipSessions';
-import BookingScreen from '../screens/BookingScreen';
-import SessionFeedback from '../screens/SessionFeedback';
 
 const Tab = createBottomTabNavigator();
 
 const TabIcon = ({ name, focused }) => {
-  const getIcon = () => {
-    switch (name) {
-      case 'Home':
-        return '🏠';
-      case 'Activities':
-        return '📚';
-      case 'Mentorship':
-      case 'Mentors':
-        return '👨‍⚕️';
-      case 'Profile':
-        return '👤';
-      default:
-        return '•';
-    }
-  };
-
+  let iconText;
+  switch (name) {
+    case 'Home':
+      iconText = '🏠';
+      break;
+    case 'Learning':
+      iconText = '📚';
+      break;
+    case 'Engage':
+      iconText = '❤️';
+      break;
+    case 'Mentor':
+      iconText = '🎓';
+      break;
+    case 'Profile':
+      iconText = '👤';
+      break;
+    default:
+      iconText = '•';
+  }
   return (
     <View style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 84 }}>
-      <Text style={{
-        fontSize: 20,
-        color: focused ? '#00FFFF' : '#666666',
-        textShadowColor: focused ? '#00FFFF' : 'transparent',
-        textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: focused ? 10 : 0,
-      }}>
-        {getIcon()}
-      </Text>
+      <Text style={{ fontSize: 20, color: focused ? '#00FFFF' : '#666666' }}>{iconText}</Text>
       <Text style={{
         marginTop: 2,
         fontSize: 12,
@@ -53,7 +47,7 @@ const TabIcon = ({ name, focused }) => {
   );
 };
 
-const BottomTabNavigator = () => {
+function BottomTabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -75,19 +69,9 @@ const BottomTabNavigator = () => {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Activities" component={ActivitiesScreen} />
-      <Tab.Screen
-        name="Mentors"
-        component={MentorshipSessions}
-        options={{
-          listeners: {
-            tabPress: (e) => {
-              e.preventDefault();
-              navigation.navigate('MentorshipSessions');
-            },
-          },
-        }}
-      />
+      <Tab.Screen name="Learning" component={LearningScreen} />
+      <Tab.Screen name="Engage" component={EngageScreen} />
+      <Tab.Screen name="Mentor" component={MentorScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

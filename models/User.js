@@ -43,6 +43,23 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Media files stored in MongoDB as base64 or URLs
+  profileImages: [{
+    url: String,
+    filename: String,
+    contentType: String,
+    size: Number,
+    uploadedAt: { type: Date, default: Date.now }
+  }],
+  videos: [{
+    url: String,
+    filename: String,
+    contentType: String,
+    size: Number,
+    thumbnail: String,
+    duration: Number,
+    uploadedAt: { type: Date, default: Date.now }
+  }],
   isProfileComplete: {
     type: Boolean,
     default: false

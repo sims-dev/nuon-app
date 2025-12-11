@@ -22,9 +22,10 @@ import {
   Chip,
   IconButton,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Avatar
 } from '@mui/material';
-import { Add, Edit, Delete, Person, School, AdminPanelSettings } from '@mui/icons-material';
+import { Add, Edit, Delete, Person, School, AdminPanelSettings, CloudUpload } from '@mui/icons-material';
 import axios from 'axios';
 import MentorCredentialsDialog from './MentorCredentialsDialog';
 
@@ -37,21 +38,32 @@ const UserManagement = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [showCredentials, setShowCredentials] = useState(false);
   const [newMentorData, setNewMentorData] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
     role: 'mentor',
     password: '',
-    specialization: '',
+    specialization: [],
     experience: '',
     qualification: '',
     department: '',
     hospital: '',
     bio: '',
     profileImage: null,
+    profileImages: [],
+    videos: [],
     hourlyRate: '',
-    availability: 'available'
+    availability: 'available',
+    location: '',
+    city: '',
+    state: '',
+    linkedin: '',
+    website: '',
+    languages: ['English'],
+    teachingStyle: '',
+    preferredTopics: []
   });
 
   const API_BASE_URL = 'http://localhost:5000/api';
@@ -97,30 +109,57 @@ const UserManagement = () => {
       console.log('🔍 Debug - Creating/Updating user...');
       console.log('🔑 Token:', token ? 'Present' : 'Missing');
       console.log('📝 Form Data:', formData);
-      
+
       // Generate random password if not provided
       const generatedPassword = formData.password || Math.random().toString(36).slice(-10);
-      
-      const submitData = {
-        ...formData,
-        password: generatedPassword
-      };
-      
-      console.log('📤 Submit Data:', submitData);
-      
+
+      const submitData = new FormData();
+
+      // Handle single profile image
+      if (formData.profileImage) {
+        submitData.append('profileImage', formData.profileImage);
+      }
+
+      // Handle multiple profile images
+      formData.profileImages.forEach((file, index) => {
+        submitData.append(`profileImages`, file);
+      });
+
+      // Handle videos
+      formData.videos.forEach((file, index) => {
+        submitData.append(`videos`, file);
+      });
+
+      // Handle other form data
+      Object.keys(formData).forEach(key => {
+        if (!['profileImage', 'profileImages', 'videos'].includes(key)) {
+          if (Array.isArray(formData[key])) {
+            submitData.append(key, JSON.stringify(formData[key]));
+          } else {
+            submitData.append(key, formData[key] || '');
+          }
+        }
+      });
+      submitData.append('password', generatedPassword);
+
+      console.log('📤 Submit Data:', Object.fromEntries(submitData));
+
       const url = editingUser
         ? `${API_BASE_URL}/admin/users/${editingUser._id}`
         : `${API_BASE_URL}/admin/users`;
-      
+
       const method = editingUser ? 'PUT' : 'POST';
-      
+
       console.log(`🌐 API Call: ${method} ${url}`);
-      
+
       const response = await axios({
         method,
         url,
         data: submitData,
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
       });
 
       console.log('✅ API Response:', response.data);
@@ -184,7 +223,48 @@ const UserManagement = () => {
       hourlyRate: user.hourlyRate ? user.hourlyRate.replace('₹', '') : '',
       availability: user.availability || 'available'
     });
+    setImagePreview(user.profilePicture ? `http://localhost:5000${user.profilePicture}` : null);
     setOpenDialog(true);
+  };
+
+  const handleImageChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setFormData({ ...formData, profileImage: file });
+      const reader = new FileReader();
+      reader.onload = (e) => setImagePreview(e.target.result);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleMultipleImagesChange = (event) => {
+    const files = Array.from(event.target.files);
+    setFormData({ ...formData, profileImages: [...formData.profileImages, ...files] });
+  };
+
+  const handleVideosChange = (event) => {
+    const files = Array.from(event.target.files);
+    setFormData({ ...formData, videos: [...formData.videos, ...files] });
+  };
+
+  const removeImage = (index) => {
+    const newImages = formData.profileImages.filter((_, i) => i !== index);
+    setFormData({ ...formData, profileImages: newImages });
+  };
+
+  const removeVideo = (index) => {
+    const newVideos = formData.videos.filter((_, i) => i !== index);
+    setFormData({ ...formData, videos: newVideos });
+  };
+
+  const handleSpecializationChange = (value) => {
+    const specs = value.split(',').map(s => s.trim()).filter(s => s);
+    setFormData({ ...formData, specialization: specs });
+  };
+
+  const handleTopicsChange = (value) => {
+    const topics = value.split(',').map(t => t.trim()).filter(t => t);
+    setFormData({ ...formData, preferredTopics: topics });
   };
 
   const resetForm = () => {
@@ -204,6 +284,7 @@ const UserManagement = () => {
       hourlyRate: '',
       availability: 'available'
     });
+    setImagePreview(null);
     setEditingUser(null);
   };
 
@@ -394,7 +475,152 @@ const UserManagement = () => {
               margin="normal"
               required
             />
-            
+
+            {/* Profile Image Upload */}
+            <Box sx={{ mt: 2, mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Profile Image
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Avatar
+                  src={imagePreview}
+                  sx={{ width: 80, height: 80 }}
+                >
+                  {formData.name ? formData.name.charAt(0).toUpperCase() : 'U'}
+                </Avatar>
+                <Box>
+                  <input
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    id="profile-image-upload"
+                    type="file"
+                    onChange={handleImageChange}
+                  />
+                  <label htmlFor="profile-image-upload">
+                    <Button
+                      variant="outlined"
+                      component="span"
+                      startIcon={<CloudUpload />}
+                      sx={{
+                        borderColor: '#8B5CF6',
+                        color: '#8B5CF6',
+                        '&:hover': { borderColor: '#7C3AED', color: '#7C3AED' }
+                      }}
+                    >
+                      Upload Image
+                    </Button>
+                  </label>
+                  {formData.profileImage && (
+                    <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                      {formData.profileImage.name}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+
+              {/* Multiple Profile Images */}
+              <Box sx={{ mt: 2, mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                  Additional Profile Images
+                </Typography>
+                <input
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  id="profile-images-upload"
+                  type="file"
+                  multiple
+                  onChange={handleMultipleImagesChange}
+                />
+                <label htmlFor="profile-images-upload">
+                  <Button
+                    variant="outlined"
+                    component="span"
+                    startIcon={<CloudUpload />}
+                    sx={{
+                      borderColor: '#8B5CF6',
+                      color: '#8B5CF6',
+                      '&:hover': { borderColor: '#7C3AED', color: '#7C3AED' },
+                      mr: 1
+                    }}
+                  >
+                    Add Images
+                  </Button>
+                </label>
+                {formData.profileImages.length > 0 && (
+                  <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {formData.profileImages.map((file, index) => (
+                      <Box key={index} sx={{ position: 'relative' }}>
+                        <Avatar
+                          src={URL.createObjectURL(file)}
+                          sx={{ width: 60, height: 60 }}
+                        />
+                        <IconButton
+                          size="small"
+                          onClick={() => removeImage(index)}
+                          sx={{
+                            position: 'absolute',
+                            top: -8,
+                            right: -8,
+                            backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                            '&:hover': { backgroundColor: 'rgba(239, 68, 68, 1)' }
+                          }}
+                        >
+                          <Delete sx={{ fontSize: 16, color: 'white' }} />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+
+              {/* Videos Upload */}
+              <Box sx={{ mt: 2, mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                  Introduction Videos
+                </Typography>
+                <input
+                  accept="video/*"
+                  style={{ display: 'none' }}
+                  id="videos-upload"
+                  type="file"
+                  multiple
+                  onChange={handleVideosChange}
+                />
+                <label htmlFor="videos-upload">
+                  <Button
+                    variant="outlined"
+                    component="span"
+                    startIcon={<CloudUpload />}
+                    sx={{
+                      borderColor: '#8B5CF6',
+                      color: '#8B5CF6',
+                      '&:hover': { borderColor: '#7C3AED', color: '#7C3AED' }
+                    }}
+                  >
+                    Add Videos
+                  </Button>
+                </label>
+                {formData.videos.length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    {formData.videos.map((file, index) => (
+                      <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="body2" sx={{ flex: 1 }}>
+                          {file.name}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => removeVideo(index)}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+
             <FormControl fullWidth margin="normal">
               <InputLabel>Role</InputLabel>
               <Select
@@ -422,9 +648,9 @@ const UserManagement = () => {
             
             <TextField
               fullWidth
-              label="Specialization"
-              value={formData.specialization}
-              onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+              label="Specialization (comma-separated)"
+              value={formData.specialization.join(', ')}
+              onChange={(e) => handleSpecializationChange(e.target.value)}
               margin="normal"
               required
               placeholder="e.g., Critical Care Nursing, Emergency Medicine"
@@ -506,6 +732,69 @@ const UserManagement = () => {
                     <MenuItem value="offline">Offline</MenuItem>
                   </Select>
                 </FormControl>
+
+                <TextField
+                  fullWidth
+                  label="Location"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  margin="normal"
+                  placeholder="e.g., Mumbai, Maharashtra"
+                />
+
+                <TextField
+                  fullWidth
+                  label="City"
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  margin="normal"
+                  placeholder="e.g., Mumbai"
+                />
+
+                <TextField
+                  fullWidth
+                  label="State"
+                  value={formData.state}
+                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                  margin="normal"
+                  placeholder="e.g., Maharashtra"
+                />
+
+                <TextField
+                  fullWidth
+                  label="LinkedIn Profile"
+                  value={formData.linkedin}
+                  onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })}
+                  margin="normal"
+                  placeholder="https://linkedin.com/in/username"
+                />
+
+                <TextField
+                  fullWidth
+                  label="Website"
+                  value={formData.website}
+                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                  margin="normal"
+                  placeholder="https://yourwebsite.com"
+                />
+
+                <TextField
+                  fullWidth
+                  label="Teaching Style"
+                  value={formData.teachingStyle}
+                  onChange={(e) => setFormData({ ...formData, teachingStyle: e.target.value })}
+                  margin="normal"
+                  placeholder="e.g., Interactive, Practical, Theory-focused"
+                />
+
+                <TextField
+                  fullWidth
+                  label="Preferred Topics (comma-separated)"
+                  value={formData.preferredTopics.join(', ')}
+                  onChange={(e) => handleTopicsChange(e.target.value)}
+                  margin="normal"
+                  placeholder="e.g., Emergency Care, Patient Management, ICU Procedures"
+                />
               </>
             )}
           </Box>

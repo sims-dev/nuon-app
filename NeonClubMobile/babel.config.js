@@ -5,13 +5,14 @@ module.exports = {
       'module:react-native-dotenv',
       {
         moduleName: '@env',
-        path: '.env',
+        path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env',
         blocklist: null,
         allowlist: null,
         safe: false,
         allowUndefined: true,
       },
     ],
-    'react-native-reanimated/plugin', // Added plugin for react-native-reanimated
+    // Only include reanimated plugin in development
+    ...(process.env.NODE_ENV !== 'production' ? ['react-native-reanimated/plugin'] : []),
   ],
 };

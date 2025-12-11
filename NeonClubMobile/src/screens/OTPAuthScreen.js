@@ -13,7 +13,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
-import api, { probeAndFixBase, getCurrentBaseURL, setBaseOverride } from '../services/api';
+import { probeAndFixBase, getCurrentBaseURL, setBaseOverride, authAPI } from '../services/api';
 import { sendOTP as fbSendOTP, verifyOTP as fbVerifyOTP, getIdToken as fbGetIdToken } from '../services/otp';
 import { ensureFirebaseInitialized } from '../services/firebaseApp';
 import { CONFIG, DEV_BASE_LAN } from '../utils/config';
@@ -77,7 +77,7 @@ const OTPAuthScreen = () => {
         endpoint = '/otp/send/email';
         body = { type: 'email', identifier: value.toLowerCase(), email: value.toLowerCase() };
       }
-      const resp = await api.post(endpoint, body, { timeout: 5000, headers: { 'x-otp-session': session } });
+      const resp = await fetchApi(endpoint, { method: 'POST', body, headers: { 'x-otp-session': session }, timeout: 5000 });
 
       // Use the actual OTP from backend response if present
       const backendOTP = resp?.data?.debugOtp;
@@ -122,12 +122,15 @@ const OTPAuthScreen = () => {
           await fbVerifyOTP(fbConfirmation, otp);
           const firebaseIdToken = await fbGetIdToken(true);
           try { await probeAndFixBase(); } catch {}
-          res = await api.post('/otp/verify', {
+          const payload = {
             type: 'phone',
             identifier: `+91${value.replace(/\D/g, '')}`,
+            otp,
             firebaseIdToken,
-            provider: 'firebase'
-          }, { timeout: 5000, headers: otpSession ? { 'x-otp-session': otpSession } : undefined });
+            provider: 'firebase',
+            session: otpSession
+          };
+          res = await authAPI.verifyOTP(payload);
           if (__DEV__) console.log('Verified using Firebase');
         } catch (firebaseError) {
           console.warn('Firebase verification failed:', firebaseError.message);
@@ -140,7 +143,7 @@ const OTPAuthScreen = () => {
         const payload = authMethod === 'phone'
           ? { type: 'phone', identifier: `+91${value.replace(/\D/g, '')}`, otp, provider: 'backend' }
           : { type: 'email', identifier: value.toLowerCase(), otp };
-        res = await api.post('/otp/verify', payload, { timeout: 5000, headers: otpSession ? { 'x-otp-session': otpSession } : undefined });
+        res = await authAPI.verifyOTP({ ...payload, session: otpSession });
         if (__DEV__) console.log('Verified using backend');
       }
   let { token, user, isNewUser } = res?.data || {};

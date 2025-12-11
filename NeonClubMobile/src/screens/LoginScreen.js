@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
-import api from '../services/api';
+import { useNavigation, CommonActions } from '@react-navigation/native';
+import { authAPI } from '../services/api';
 import { AuthContext } from '../contexts/AuthContext';
 import NEON_COLORS from '../utils/colors';
 
@@ -33,8 +33,18 @@ const LoginScreen = () => {
 
     setLoading(true);
     try {
-      const response = await api.post('/login', { email, password });
-      const { token, user } = response.data;
+      // Use fetch for React Native compatibility
+      const response = await fetch('http://192.168.0.209:5000/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Login failed');
+      }
+      const data = await response.json();
+      const { token, user } = data;
 
       // Store token and user data
       await AsyncStorage.setItem('token', token);
@@ -48,10 +58,10 @@ const LoginScreen = () => {
 
       // Check if user profile is complete and navigate accordingly
       if (user?.isProfileComplete) {
-        navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+        navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main' }] }));
       } else {
         // Navigate to profile setup if profile is incomplete
-        navigation.reset({
+        navigation.dispatch(CommonActions.reset({
           index: 0,
           routes: [{
             name: 'ProfileSetup',
@@ -61,12 +71,11 @@ const LoginScreen = () => {
               isNewUser: false
             }
           }]
-        });
+        }));
       }
     } catch (error) {
       console.error('Login error:', error);
-      const errorMessage = error.response?.data?.message || 'Login failed';
-      Alert.alert('Error', errorMessage);
+      Alert.alert('Error', error.message || 'Login failed');
     } finally {
       setLoading(false);
     }

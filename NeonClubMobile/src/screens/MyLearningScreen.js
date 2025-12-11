@@ -1,7 +1,7 @@
 // Helper to get full URL for uploads (always keep at the top, outside the component)
-const BASE_URL = 'http://192.168.0.116:5000'; // Updated to correct IP
-const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
 import React, { useState, useEffect } from 'react';
+const BASE_URL = 'http://192.168.0.7:5000'; // Updated to correct IP
+const getFullUrl = (path) => path && typeof path === 'string' && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Image,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import api, { courseAPI, eventAPI, workshopAPI, activitiesAPI, mentorAPI } from '../services/api';
+import { courseAPI, eventAPI, workshopAPI, activitiesAPI, mentorAPI } from '../services/api';
 import { LEARNING_HERO } from '../assets/heroImages';
 
 const MyLearningScreen = ({ navigation }) => {
@@ -78,16 +78,16 @@ const MyLearningScreen = ({ navigation }) => {
       }}
     >
       <View style={styles.heroImageWrap}>
-        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.image) || LEARNING_HERO }} style={styles.heroImage} />
+        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.image) || LEARNING_HERO || 'https://via.placeholder.com/400x300/667eea/ffffff?text=Course' }} style={styles.heroImage} />
         <View style={styles.heroOverlay} />
         <View style={styles.statusPill}><Text style={styles.statusPillText}>{getStatusText(item)}</Text></View>
-        <Text style={styles.heroTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.heroTitle} numberOfLines={1}>{item.title || 'Untitled'}</Text>
       </View>
       <View style={styles.heroProgressRow}>
         <Text style={styles.progressLabel}>Your Progress</Text>
-        <Text style={styles.progressPct}>{(item.progress||0)}% Complete</Text>
+        <Text style={styles.progressPct}>{(item.progress && typeof item.progress === 'number' ? item.progress : 0)}% Complete</Text>
       </View>
-      <View style={styles.progressBarRich}><View style={[styles.progressFillRich, { width: `${item.progress||0}%` }]} /></View>
+      <View style={styles.progressBarRich}><View style={[styles.progressFillRich, { width: `${item.progress && typeof item.progress === 'number' ? item.progress : 0}%` }]} /></View>
       <View style={styles.nextLessonCard}>
         <Text style={styles.nextLessonLabel}>Next Lesson</Text>
         <Text style={styles.nextLessonTitle} numberOfLines={1}>{item.nextLesson || 'Lesson 16: Emergency Response'}</Text>
@@ -102,10 +102,10 @@ const MyLearningScreen = ({ navigation }) => {
       onPress={() => navigation.navigate('WorkshopViewer', { workshop: { ...item, hasRegistered: true } })}
     >
       <View style={styles.heroImageWrap}>
-        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO }} style={styles.heroImage} />
+        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO || 'https://via.placeholder.com/400x300/667eea/ffffff?text=Session' }} style={styles.heroImage} />
         <View style={styles.heroOverlay} />
         <View style={styles.statusPill}><Text style={styles.statusPillText}>{getStatusText(item)}</Text></View>
-        <Text style={styles.heroTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.heroTitle} numberOfLines={1}>{item.title || 'Untitled Session'}</Text>
       </View>
       <View style={styles.heroProgressRow}>
         <Text style={styles.progressLabel}>Status</Text>
@@ -125,10 +125,10 @@ const MyLearningScreen = ({ navigation }) => {
       onPress={() => navigation.navigate('EventViewer', { event: { ...item, hasRegistered: true } })}
     >
       <View style={styles.heroImageWrap}>
-        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO }} style={styles.heroImage} />
+        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO || 'https://via.placeholder.com/400x300/667eea/ffffff?text=Workshop' }} style={styles.heroImage} />
         <View style={styles.heroOverlay} />
         <View style={styles.statusPill}><Text style={styles.statusPillText}>{getStatusText(item)}</Text></View>
-        <Text style={styles.heroTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.heroTitle} numberOfLines={1}>{item.title || 'Untitled Workshop'}</Text>
       </View>
       <View style={styles.heroProgressRow}>
         <Text style={styles.progressLabel}>Status</Text>
@@ -145,13 +145,13 @@ const MyLearningScreen = ({ navigation }) => {
     <TouchableOpacity
       style={styles.heroCard}
       activeOpacity={0.9}
-      onPress={() => navigation.navigate('SessionViewer', { session: item })}
+      onPress={() => navigation.navigate('VideoSession', { session: item })}
     >
       <View style={styles.heroImageWrap}>
-        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO }} style={styles.heroImage} />
+        <Image source={{ uri: getFullUrl(item.thumbnail) || getFullUrl(item.coverImage) || getFullUrl(item.imageUrl) || LEARNING_HERO || 'https://via.placeholder.com/400x300/667eea/ffffff?text=Event' }} style={styles.heroImage} />
         <View style={styles.heroOverlay} />
         <View style={styles.statusPill}><Text style={styles.statusPillText}>{getStatusText(item)}</Text></View>
-        <Text style={styles.heroTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.heroTitle} numberOfLines={1}>{item.title || 'Untitled Event'}</Text>
       </View>
       <View style={styles.heroProgressRow}>
         <Text style={styles.progressLabel}>Status</Text>
@@ -191,17 +191,17 @@ const MyLearningScreen = ({ navigation }) => {
         {loading && <ActivityIndicator size="large" color="#6366F1" style={{ marginTop: 32 }} />}
 
         {activeTab === 'courses' && (
-          courses.filter(Boolean).length === 0 ? (
+          (Array.isArray(courses) ? courses.filter(Boolean) : []).length === 0 ? (
             <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No courses enrolled yet.</Text>
           ) : (
-            courses.filter(Boolean).map((item, idx) => (
-              <View key={item._id || idx}>{renderCourseItem({ item })}</View>
+            (Array.isArray(courses) ? courses.filter(Boolean) : []).map((item, idx) => (
+              <View key={item._id || item.id || idx}>{renderCourseItem({ item })}</View>
             ))
           )
         )}
 
         {activeTab === 'workshops' && (
-          Array.isArray(workshops) && workshops.filter(Boolean).length === 0 ? (
+          (Array.isArray(workshops) ? workshops.filter(Boolean) : []).length === 0 ? (
             <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No workshops enrolled yet.</Text>
           ) : (
             (Array.isArray(workshops) ? workshops : []).filter(Boolean).map((item, idx) => {
@@ -209,27 +209,27 @@ const MyLearningScreen = ({ navigation }) => {
               if (!item.videoUrl && item.metadata && item.metadata.videoUrl) {
                 item.videoUrl = item.metadata.videoUrl;
               }
-              return <View key={item._id || idx}>{renderWorkshopItem({ item })}</View>;
+              return <View key={item._id || item.id || idx}>{renderWorkshopItem({ item })}</View>;
             })
           )
         )}
 
         {activeTab === 'events' && (
-          events.filter(Boolean).length === 0 ? (
+          (Array.isArray(events) ? events.filter(Boolean) : []).length === 0 ? (
             <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No events booked yet.</Text>
           ) : (
-            events.filter(Boolean).map((item, idx) => (
-              <View key={item._id || idx}>{renderEventItem({ item })}</View>
+            (Array.isArray(events) ? events.filter(Boolean) : []).map((item, idx) => (
+              <View key={item._id || item.id || idx}>{renderEventItem({ item })}</View>
             ))
           )
         )}
 
         {activeTab === 'sessions' && (
-          sessions.filter(Boolean).length === 0 ? (
+          (Array.isArray(sessions) ? sessions.filter(Boolean) : []).length === 0 ? (
             <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 32 }}>No sessions booked yet.</Text>
           ) : (
-            sessions.filter(Boolean).map((item, idx) => (
-              <View key={item._id || idx}>{renderSessionItem({ item })}</View>
+            (Array.isArray(sessions) ? sessions.filter(Boolean) : []).map((item, idx) => (
+              <View key={item._id || item.id || idx}>{renderSessionItem({ item })}</View>
             ))
           )
         )}

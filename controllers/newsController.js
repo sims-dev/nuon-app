@@ -90,6 +90,14 @@ const getNewsById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Check if id is a valid ObjectId
+    if (!require('mongoose').Types.ObjectId.isValid(id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'News not found'
+      });
+    }
+
     const news = await News.findById(id)
       .populate('author', 'name email');
 

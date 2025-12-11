@@ -6,6 +6,31 @@ const Assessment = require('../models/Assessment');
 const Feedback = require('../models/Feedback');
 const Mentor = require('../models/Mentor');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
+
+// Configure multer for profile image uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/images/');
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 // Get dashboard statistics
 const getStats = async (req, res) => {
@@ -54,53 +79,111 @@ const getUsers = async (req, res) => {
 // Create user
 const createUser = async (req, res) => {
   try {
-    const { 
-      name, 
-      email, 
-      role, 
-      phoneNumber,
+    const {
+      name, email, phone, role, password,
+      specialization, experience, qualification, department, hospital, bio,
+      hourlyRate, availability, location, city, state, linkedin, website,
+      teachingStyle, preferredTopics
+    } = req.body;
+
+    console.log('Creating user:', { name, email, role });
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'User with this email already exists' });
+    }
+
+    // Accept password in body or generate a temporary one
+    let rawPassword = password;
+    if (!rawPassword) rawPassword = Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    // Handle file uploads
+    let profileImages = [];
+    let videos = [];
+    let profilePicture = '';
+
+    // Process uploaded files
+    if (req.files) {
+      // Handle profile image
+      if (req.files.profileImage && req.files.profileImage.length > 0) {
+        const profileImageFile = req.files.profileImage[0];
+        profilePicture = `/uploads/images/${profileImageFile.filename}`;
+      }
+
+      // Handle multiple profile images
+      if (req.files.profileImages) {
+        profileImages = req.files.profileImages.map(file => ({
+          url: `/uploads/images/${file.filename}`,
+          filename: file.filename,
+          contentType: file.mimetype,
+          size: file.size,
+          uploadedAt: new Date()
+        }));
+      }
+
+      // Handle videos
+      if (req.files.videos) {
+        videos = req.files.videos.map(file => ({
+          url: `/uploads/videos/${file.filename}`,
+          filename: file.filename,
+          contentType: file.mimetype,
+          size: file.size,
+          uploadedAt: new Date()
+        }));
+      }
+    }
+
+    // Parse array fields
+    const parsedSpecialization = Array.isArray(specialization) ? specialization :
+      (specialization ? specialization.split(',').map(s => s.trim()) : []);
+    const parsedPreferredTopics = Array.isArray(preferredTopics) ? preferredTopics :
+      (preferredTopics ? preferredTopics.split(',').map(t => t.trim()) : []);
+
+    // Create user
+    const user = new User({
+      name,
+      email: email.toLowerCase(),
+      phone,
+      role,
+      passwordHash: hashedPassword,
+      specialization: parsedSpecialization,
+      experience: parseInt(experience) || 0,
       qualification,
       department,
       hospital,
       bio,
-      hourlyRate,
-      availability,
-      specialization,
-      experience,
-      location
-    } = req.body;
-    
-    // Accept password in body or generate a temporary one
-    let rawPassword = req.body.password;
-    if (!rawPassword) rawPassword = Math.random().toString(36).slice(-8);
-    const hashed = await bcrypt.hash(rawPassword, 10);
-    
-    const userData = {
-      name,
-      email,
-      role,
-      passwordHash: hashed
-    };
+      hourlyRate: parseInt(hourlyRate) || 0,
+      availability: availability || 'available',
+      location,
+      city,
+      state,
+      linkedin,
+      website,
+      teachingStyle,
+      preferredTopics: parsedPreferredTopics,
+      profilePicture,
+      profileImages,
+      videos,
+      languages: ['English'], // Default
+      isProfileComplete: true
+    });
 
-    // Add optional fields if provided
-    if (phoneNumber) userData.phoneNumber = phoneNumber;
-    if (qualification) userData.qualification = qualification;
-    if (department) userData.department = department;
-    if (hospital) userData.hospital = hospital;
-    if (bio) userData.bio = bio;
-    if (hourlyRate) userData.hourlyRate = parseInt(hourlyRate) || 0;
-    if (availability) userData.availability = availability;
-    if (specialization) userData.specialization = specialization;
-    if (experience) userData.experience = parseInt(experience) || 0;
-    if (location) userData.location = location;
-
-    const user = new User(userData);
     await user.save();
+
+    console.log('User created successfully:', user._id);
     const safe = user.toObject();
     delete safe.passwordHash;
-    res.status(201).json({ user: safe, tempPassword: rawPassword });
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      user: safe,
+      tempPassword: rawPassword
+    });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error('Create user error:', error);
+    res.status(500).json({ success: false, message: 'Error creating user', error: error.message });
   }
 };
 
@@ -310,15 +393,18 @@ const addMentor = async (req, res) => {
       name,
       email,
       specialization,
-      experience,
-      hourlyRate,
+      experience: experience ? parseInt(experience) : 0,
+      hourlyRate: hourlyRate ? parseFloat(hourlyRate) : 0,
       role: 'mentor',
-      isPublic: true,
-      isActive: true,
+      isMentor: true,      // ✅ Required field added
+      isApproved: true,    // ✅ Required field added
+      isActive: true,      // ✅ Already present
+      isPublic: true,      // ✅ Now valid field
     });
     await mentor.save();
     res.status(201).json({ success: true, message: 'Mentor added successfully', mentor });
   } catch (error) {
+    console.error('Add mentor error:', error);
     res.status(400).json({ success: false, message: 'Error adding mentor', error: error.message });
   }
 };
