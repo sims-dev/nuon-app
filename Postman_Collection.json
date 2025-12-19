@@ -1,0 +1,83 @@
+{
+  "info": {
+    "name": "Mentor API Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Mentor",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/mentors",
+          "host": ["{{base_url}}"],
+          "path": ["mentors"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"hourlyRate\": 50\n}"
+        }
+      }
+    },
+    {
+      "name": "List Mentors",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/public/mentors",
+          "host": ["{{base_url}}"],
+          "path": ["public", "mentors"]
+        }
+      }
+    },
+    {
+      "name": "Update Mentor Profile",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/profile",
+          "host": ["{{base_url}}"],
+          "path": ["profile"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"bio\": \"Experienced mentor in software development.\",\n  \"specialization\": \"Web Development\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Create Availability Slot",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/availability",
+          "host": ["{{base_url}}"],
+          "path": ["availability"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"startDateTime\": \"2025-11-10T10:00:00Z\",\n  \"endDateTime\": \"2025-11-10T11:00:00Z\",\n  \"price\": 100\n}"
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5000/api" },
+    { "key": "token", "value": "" }
+  ]
+}

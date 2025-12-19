@@ -1,0 +1,19 @@
+{
+  "watch": [
+    "server.js",
+    "controllers",
+    "routes",
+    "models",
+    "lib"
+  ],
+  "ignore": [
+    "node_modules",
+    "neonclub-web/build",
+    "neonclub-web/node_modules",
+    "uploads",
+    "**/*.log",
+    "**/*.test.*"
+  ],
+  "delay": "250",
+  "quiet": true
+}

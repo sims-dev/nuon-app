@@ -1,0 +1,159 @@
+import React, { createContext, useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import api, { probeAndFixBase } from '../services/api';
+import socketService from '../services/socket';
+
+export const AuthContext = createContext({
+  user: null,
+  token: null,
+  loading: true,
+  signIn: async () => {},
+  signUp: async () => {},
+  signOut: async () => {},
+  updateUser: async () => {},
+  setToken: () => {},
+});
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [token, setTokenState] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const loaded = useRef(false);
+
+  useEffect(() => {
+    // Load existing auth data if available, otherwise start fresh for onboarding
+    const loadAuth = async () => {
+      if (loaded.current) {
+        setLoading(false);
+        return;
+      }
+      loaded.current = true;
+      try {
+        // Support both mobile ('token') and web-style ('accessToken') storage keys
+        let token = await AsyncStorage.getItem('token');
+        if (!token) {
+          token = await AsyncStorage.getItem('accessToken');
+        }
+        // user may be stored under 'user' (mobile) or 'profile' (older flows)
+        let userStr = await AsyncStorage.getItem('user');
+        if (!userStr) {
+          userStr = await AsyncStorage.getItem('profile');
+        }
+
+        if (token && userStr) {
+          const user = JSON.parse(userStr);
+          setTokenState(token);
+          setUser(user);
+          api.defaults.headers.common.Authorization = `Bearer ${token}`;
+          console.log('[AuthContext] Loaded existing auth data');
+        } else {
+          console.log('[AuthContext] No existing auth data, starting fresh');
+        }
+      } catch (error) {
+        console.error('[AuthContext] Error loading auth data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAuth();
+  }, []);
+
+  const signIn = async (credentials) => {
+    try {
+      // Backend exposes auth under /api/auth/login and returns { accessToken, refreshToken, user }
+      const res = await api.post('/auth/login', credentials);
+      const { accessToken: tkn, user: usr } = res.data;
+      // persist
+      await AsyncStorage.setItem('token', tkn);
+      await AsyncStorage.setItem('user', JSON.stringify(usr));
+      api.defaults.headers.common.Authorization = `Bearer ${tkn}`;
+      setTokenState(tkn);
+      setUser(usr);
+
+      // Connect socket with new token
+      try {
+        await socketService.updateToken(tkn);
+        await socketService.connect();
+      } catch (socketError) {
+        console.warn('Socket connection failed during sign in:', socketError);
+      }
+
+      return usr;
+    } catch (error) {
+      console.error('Sign in error:', error);
+      throw error;
+    }
+  };
+
+  const updateUser = async (userData) => {
+    console.log('[AuthContext] Updating user:', userData);
+    console.log('[AuthContext] isProfileComplete:', userData?.isProfileComplete);
+    
+    // Check if profile is incomplete
+    const profileIncomplete = checkProfileIncomplete(userData);
+    const updatedUserData = {
+      ...userData,
+      profileIncomplete
+    };
+    
+    setUser(updatedUserData);
+    await AsyncStorage.setItem('user', JSON.stringify(updatedUserData));
+    console.log('[AuthContext] User updated in context and storage, profileIncomplete:', profileIncomplete);
+  };
+
+  // Helper function to check if profile is incomplete
+  const checkProfileIncomplete = (userData) => {
+    if (!userData) return true;
+    
+    // Check required fields for professional profile
+    const requiredFields = [
+      'organization',
+      'registrationNumber',
+      'highestQualification'
+    ];
+    
+    const missingFields = requiredFields.filter(field => {
+      const value = userData[field];
+      return !value || value === '' || value === 'Not specified';
+    });
+    
+    console.log('[AuthContext] Profile check - missing fields:', missingFields);
+    return missingFields.length > 0;
+  };
+
+  const signUp = async (userData) => {
+  const res = await api.post('/register', userData);
+    return res.data;
+  };
+
+  const setToken = (newToken) => {
+    setTokenState(newToken);
+    if (newToken) {
+      api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+      // Update socket token if connected
+      socketService.updateToken(newToken);
+    } else {
+      delete api.defaults.headers.common.Authorization;
+      socketService.disconnect();
+    }
+  };
+
+  const signOut = async () => {
+    await AsyncStorage.clear();
+    setUser(null);
+    setTokenState(null);
+    delete api.defaults.headers.common.Authorization;
+
+    // Disconnect socket on sign out
+    socketService.disconnect();
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, token, loading, signIn, signUp, signOut, updateUser, setToken }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export default AuthProvider;
