@@ -202,10 +202,9 @@ export class AuthController {
     }
 
     @Post('refresh')
-    async refresh(): Promise<{ status: string; accessToken: string }> {
+    async refresh(@Body() body: { refreshToken: string }): Promise<{ status: string; accessToken: string }> {
         try {
-            // TODO: Implement refresh logic
-            return await this.authService.refresh();
+            return await this.authService.refresh(body.refreshToken);
         } catch (error) {
             throw new HttpException(
                 { message: (error as Error).message, status: 'error' },

@@ -30,9 +30,26 @@ export class MentorService {
                 orderBy: { createdAt: 'desc' }
             });
 
+            // Add availability status for each mentor
+            const mentorsWithAvailability = await Promise.all(
+                mentors.map(async (mentor) => {
+                    const hasAvailableSlots = await this.prisma.mentorAvailability.findFirst({
+                        where: {
+                            mentorId: mentor.id,
+                            isActive: true,
+                            currentBookings: { lt: this.prisma.mentorAvailability.fields.maxBookings }
+                        }
+                    });
+                    return {
+                        ...mentor,
+                        available: !!hasAvailableSlots
+                    };
+                })
+            );
+
             return {
                 success: true,
-                mentors
+                mentors: mentorsWithAvailability
             };
         } catch (error) {
             throw new Error((error as Error).message);
@@ -75,6 +92,14 @@ export class MentorService {
                     email: mentorData.email || '',
                     experience: mentorData.experience || 0,
                     hourlyRate: mentorData.hourlyRate || 0,
+                    specialization: mentorData.specialization || '',
+                    qualification: mentorData.qualification || '',
+                    department: mentorData.department || '',
+                    hospital: mentorData.hospital || '',
+                    organization: mentorData.organization || '',
+                    phoneNumber: mentorData.phoneNumber || '',
+                    bio: mentorData.bio || '',
+                    profilePicture: mentorData.profilePicture || '',
                     isMentor: mentorData.isMentor || true,
                     isApproved: mentorData.isApproved || false,
                     active: mentorData.isActive || true,
@@ -325,13 +350,65 @@ export class MentorService {
         }
     }
 
+    async getProfile(mentorId: bigint): Promise<any> {
+        try {
+            const mentor = await this.prisma.user.findUnique({
+                where: { id: mentorId }
+            });
+
+            if (!mentor) {
+                throw new Error('Mentor not found');
+            }
+
+            return {
+                name: mentor.name || '',
+                email: mentor.email || '',
+                specialization: mentor.specialization || '',
+                experience: mentor.experience || '',
+                currentWorkplace: mentor.hospital || '',
+                city: mentor.city || '',
+                state: mentor.state || '',
+                registrationNumber: mentor.registrationNumber || '',
+                highestQualification: mentor.qualification || '',
+                bio: mentor.bio || '',
+                organization: mentor.organization || '',
+                profilePicture: mentor.profilePicture || '',
+                phoneNumber: mentor.phoneNumber || '',
+                role: 'mentor',
+                hourlyRate: mentor.hourlyRate || '',
+                qualification: mentor.qualification || '',
+                department: mentor.department || '',
+                hospital: mentor.hospital || ''
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
     async updateProfile(mentorId: bigint, updates: any): Promise<any> {
         try {
-            updates.isProfileComplete = true;
+            const data: any = {
+                name: updates.name,
+                email: updates.email ? updates.email.toLowerCase() : undefined,
+                specialization: updates.specialization,
+                experience: updates.experience ? parseInt(updates.experience.toString(), 10) : null,
+                hospital: updates.currentWorkplace, // Map to hospital field
+                registrationNumber: updates.registrationNumber,
+                qualification: updates.highestQualification,
+                city: updates.city,
+                state: updates.state,
+                organization: updates.organization,
+                phoneNumber: updates.phoneNumber,
+                hourlyRate: updates.hourlyRate ? parseFloat(updates.hourlyRate.toString()) : null,
+                department: updates.department,
+                profilePicture: updates.profilePicture,
+                bio: updates.bio,
+                isProfileComplete: true
+            };
 
             const updatedMentor = await this.prisma.user.update({
                 where: { id: mentorId },
-                data: updates
+                data
             });
 
             return {
@@ -346,23 +423,28 @@ export class MentorService {
 
     async createAvailabilitySlot(mentorId: bigint, data: any): Promise<any> {
         try {
+            console.log('Creating availability slot with data:', data);
             const {
                 title,
                 description,
                 startDateTime,
                 endDateTime,
                 duration,
-                maxBookings,
+                maxBookings = 1,
                 price,
-                sessionType,
-                meetingType,
-                specializations
+                sessionType = 'mentoring',
+                meetingType = 'online',
+                specializations = []
             } = data;
+
+            console.log('Parsed data:', { title, description, startDateTime, endDateTime, duration, maxBookings, price, sessionType, meetingType, specializations });
 
             const meetingLink = '';
 
             const start = new Date(startDateTime);
             const end = new Date(endDateTime);
+
+            console.log('Parsed dates:', { start, end });
 
             if (start >= end) {
                 throw new Error('Start time must be before end time');
@@ -394,22 +476,26 @@ export class MentorService {
 
             // TODO: Create Zoom meeting if meetingType is zoom
 
+            const createData = {
+                mentorId: BigInt(mentorId),
+                date: new Date(startDateTime),
+                title,
+                description,
+                startDateTime: start,
+                endDateTime: end,
+                duration: parseInt(duration.toString(), 10),
+                maxBookings: parseInt(maxBookings.toString(), 10),
+                price: price ? parseFloat(price.toString()) : null,
+                sessionType,
+                meetingType,
+                meetingLink,
+                specializations: specializations || null
+            };
+
+            console.log('Creating availability with data:', createData);
+
             const availability = await this.prisma.mentorAvailability.create({
-                data: {
-                    mentorId: BigInt(mentorId),
-                    date: new Date(startDateTime),
-                    title,
-                    description,
-                    startDateTime,
-                    endDateTime,
-                    duration,
-                    maxBookings,
-                    price,
-                    sessionType,
-                    meetingType,
-                    meetingLink,
-                    specializations: specializations || []
-                },
+                data: createData,
                 include: {
                     mentor: { select: { id: true, name: true, email: true } }
                 }
@@ -418,7 +504,7 @@ export class MentorService {
             // Emit socket event for real-time updates
             const io = getSocket();
             if (io) {
-                io.emit('availability-created', availability);
+                io.emit('new_mentor_availability', availability);
             }
 
             return {
@@ -427,6 +513,7 @@ export class MentorService {
                 availability
             };
         } catch (error) {
+            console.error('Error in createAvailabilitySlot:', error);
             throw new Error((error as Error).message);
         }
     }
@@ -511,7 +598,7 @@ export class MentorService {
             // Emit socket event for real-time updates
             const io = getSocket();
             if (io) {
-                io.emit('availability-updated', updatedSlot);
+                io.emit('mentor_availability_update', updatedSlot);
             }
 
             return {
@@ -608,7 +695,8 @@ export class MentorService {
             // Emit socket event for real-time updates
             const io = getSocket();
             if (io) {
-                io.emit('booking-created', booking);
+                io.emit('booking_created', booking);
+                io.emit('booking_update', booking);
             }
 
             return {
@@ -678,7 +766,7 @@ export class MentorService {
             // Emit socket event for real-time updates
             const io = getSocket();
             if (io) {
-                io.emit('mentor-created', updatedUser);
+                io.emit('mentor_created', updatedUser);
             }
 
             return {
@@ -710,6 +798,223 @@ export class MentorService {
                 success: true,
                 message: 'Slot booked successfully',
                 slot
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async acceptBooking(bookingId: bigint, mentorId: bigint): Promise<any> {
+        try {
+            const booking = await this.prisma.booking.findFirst({
+                where: { id: bookingId, mentorId }
+            });
+
+            if (!booking) {
+                throw new Error('Booking not found');
+            }
+
+            if (booking.status !== 'pending') {
+                throw new Error('Booking is not in pending status');
+            }
+
+            const updatedBooking = await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { status: 'confirmed' },
+                include: {
+                    mentor: { select: { id: true, name: true, email: true } },
+                    nurse: { select: { id: true, name: true, email: true } }
+                }
+            });
+
+            // Emit socket event for real-time updates
+            const io = getSocket();
+            if (io) {
+                io.emit('booking_accepted', updatedBooking);
+            }
+
+            return {
+                success: true,
+                message: 'Booking accepted successfully',
+                booking: updatedBooking
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async rejectBooking(bookingId: bigint, mentorId: bigint): Promise<any> {
+        try {
+            const booking = await this.prisma.booking.findFirst({
+                where: { id: bookingId, mentorId }
+            });
+
+            if (!booking) {
+                throw new Error('Booking not found');
+            }
+
+            if (booking.status !== 'pending') {
+                throw new Error('Booking is not in pending status');
+            }
+
+            const updatedBooking = await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { status: 'rejected' },
+                include: {
+                    mentor: { select: { id: true, name: true, email: true } },
+                    nurse: { select: { id: true, name: true, email: true } }
+                }
+            });
+
+            // Decrease current bookings count
+            await this.prisma.mentorAvailability.update({
+                where: { id: booking.mentorAvailabilityId },
+                data: { currentBookings: { decrement: 1 } }
+            });
+
+            // Emit socket event for real-time updates
+            const io = getSocket();
+            if (io) {
+                io.emit('booking_rejected', updatedBooking);
+            }
+
+            return {
+                success: true,
+                message: 'Booking rejected successfully',
+                booking: updatedBooking
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async startSession(bookingId: bigint, mentorId: bigint, meetingLink?: string): Promise<any> {
+        try {
+            const booking = await this.prisma.booking.findFirst({
+                where: { id: bookingId, mentorId }
+            });
+
+            if (!booking) {
+                throw new Error('Booking not found');
+            }
+
+            if (booking.status !== 'confirmed') {
+                throw new Error('Booking must be confirmed to start session');
+            }
+
+            // Generate meeting link if not provided
+            const link = meetingLink || `https://zoom.us/j/${Math.random().toString(36).substring(2, 15)}`;
+
+            const updatedBooking = await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: {
+                    status: 'in_progress',
+                    zoomLink: link
+                },
+                include: {
+                    mentor: { select: { id: true, name: true, email: true } },
+                    nurse: { select: { id: true, name: true, email: true } }
+                }
+            });
+
+            // Emit socket event for real-time updates
+            const io = getSocket();
+            if (io) {
+                io.emit('meeting_started', {
+                    bookingId,
+                    meetingLink: link,
+                    mentorId,
+                    nurseId: booking.nurseId
+                });
+            }
+
+            return {
+                success: true,
+                message: 'Session started successfully',
+                booking: updatedBooking,
+                meetingLink: link
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async rescheduleBooking(bookingId: bigint, mentorId: bigint, newDateTime: Date): Promise<any> {
+        try {
+            const booking = await this.prisma.booking.findFirst({
+                where: { id: bookingId, mentorId }
+            });
+
+            if (!booking) {
+                throw new Error('Booking not found');
+            }
+
+            if (booking.status !== 'confirmed' && booking.status !== 'pending') {
+                throw new Error('Cannot reschedule booking with current status');
+            }
+
+            const updatedBooking = await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: {
+                    dateTime: newDateTime,
+                    status: 'rescheduled'
+                },
+                include: {
+                    mentor: { select: { id: true, name: true, email: true } },
+                    nurse: { select: { id: true, name: true, email: true } }
+                }
+            });
+
+            // Emit socket event for real-time updates
+            const io = getSocket();
+            if (io) {
+                io.emit('booking_rescheduled', updatedBooking);
+            }
+
+            return {
+                success: true,
+                message: 'Booking rescheduled successfully',
+                booking: updatedBooking
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async joinSession(bookingId: bigint, userId: bigint): Promise<any> {
+        try {
+            const booking = await this.prisma.booking.findFirst({
+                where: {
+                    id: bookingId,
+                    OR: [
+                        { nurseId: userId },
+                        { mentorId: userId }
+                    ]
+                }
+            });
+
+            if (!booking) {
+                throw new Error('Booking not found or access denied');
+            }
+
+            if (!booking.zoomLink) {
+                throw new Error('Meeting link not available');
+            }
+
+            // Emit socket event for real-time updates
+            const io = getSocket();
+            if (io) {
+                io.emit('user_joined_session', {
+                    bookingId,
+                    userId,
+                    userType: booking.mentorId === userId ? 'mentor' : 'nurse'
+                });
+            }
+
+            return {
+                success: true,
+                message: 'Joined session successfully',
+                meetingLink: booking.zoomLink
             };
         } catch (error) {
             throw new Error((error as Error).message);

@@ -16,6 +16,8 @@ import { SvgXml } from 'react-native-svg';
 import Video from 'react-native-video';
 import api from '../services/api';
 import { IP_ADDRESS } from '../../config/ipConfig';
+import BookingPromptModal from '../components/BookingPromptModal';
+import { checkProfileCompletion } from '../utils/profileUtils';
 
 // SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -34,6 +36,8 @@ const EngageDetailsScreen = ({ navigation, route }) => {
   const { item } = route.params || {};
   const [isLoading, setIsLoading] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [missingFields, setMissingFields] = useState([]);
 
   useEffect(() => {
     if (!item) {
@@ -43,45 +47,11 @@ const EngageDetailsScreen = ({ navigation, route }) => {
 
   const handlePurchase = async () => {
     try {
-      // Check if profile is incomplete
-      const profileIncomplete = await AsyncStorage.getItem('profileIncomplete');
-      if (profileIncomplete === 'true') {
-        Alert.alert(
-          'Complete Your Profile',
-          'Please complete your professional information to book wellness programs. This helps us provide you with the best experience.\n\nMissing information:\n\n• Current Workplace\n• Nursing Registration Number\n• Highest Qualification',
-          [
-            { text: 'Maybe Later', style: 'cancel' },
-            { text: 'Complete Profile Now', onPress: () => navigation.navigate('ProfileSetup') }
-          ]
-        );
+      const { isComplete, missingFields: fields } = await checkProfileCompletion();
+      if (!isComplete) {
+        setMissingFields(fields);
+        setShowProfilePrompt(true);
         return;
-      }
-
-      // Additional check for profile completion status
-      const userProfile = await AsyncStorage.getItem('nurseProfile');
-      if (userProfile) {
-        const profile = JSON.parse(userProfile);
-        const requiredFields = ['organization', 'registrationNumber', 'highestQualification'];
-        const missingFields = requiredFields.filter(field => !profile[field]);
-
-        if (missingFields.length > 0) {
-          const missingLabels = {
-            organization: 'Current Workplace',
-            registrationNumber: 'Nursing Registration Number',
-            highestQualification: 'Highest Qualification'
-          };
-          const missingText = missingFields.map(field => `• ${missingLabels[field] || field}`).join('\n');
-
-          Alert.alert(
-            'Complete Your Profile',
-            `Please complete your professional information to book wellness programs. This helps us provide you with the best experience.\n\nMissing information:\n\n${missingText}`,
-            [
-              { text: 'Maybe Later', style: 'cancel' },
-              { text: 'Complete Profile Now', onPress: () => navigation.navigate('ProfileSetup') }
-            ]
-          );
-          return;
-        }
       }
 
       if (item.price === 0) {
@@ -196,12 +166,34 @@ const EngageDetailsScreen = ({ navigation, route }) => {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
-        {/* Hero Image */}
+        {/* Hero Image or Video */}
         <View style={styles.heroContainer}>
-          {img ? (
-            <Image source={{ uri: img }} style={styles.heroImage} />
+          {item.videoUrl ? (
+            <TouchableOpacity onPress={() => {
+              navigation.navigate('VideoPlayer', {
+                videoUrl: item.videoUrl,
+                title: item.videoTitle || item.title,
+                thumbnail: item.videoThumbnail
+              });
+            }}>
+              <Image source={{ uri: item.videoThumbnail || img }} style={styles.heroImage} />
+              <View style={styles.playButton}>
+                <Text style={styles.playIcon}>▶</Text>
+              </View>
+              {item.video_duration && (
+                <View style={styles.videoDuration}>
+                  <Text style={styles.durationText}>{item.video_duration}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           ) : (
-            <View style={[styles.heroImage, { backgroundColor: '#E5E7EB' }]} />
+            <>
+              {img ? (
+                <Image source={{ uri: img }} style={styles.heroImage} />
+              ) : (
+                <View style={[styles.heroImage, { backgroundColor: '#E5E7EB' }]} />
+              )}
+            </>
           )}
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.6)']}
@@ -385,6 +377,16 @@ const EngageDetailsScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      <BookingPromptModal
+        visible={showProfilePrompt}
+        onCompleteNow={() => {
+          setShowProfilePrompt(false);
+          navigation.navigate('Profile', { screen: 'ProfileEdit' });
+        }}
+        onMaybeLater={() => setShowProfilePrompt(false)}
+        missingFields={missingFields}
+      />
     </SafeAreaView>
   );
 };

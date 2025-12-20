@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CONFIG } from '../utils/config';
 import { auth as firebaseAuth } from '../firebase';
 import { IP_ADDRESS } from '../config/ipConfig';
+import { DeviceEventEmitter } from 'react-native';
 
 const BASE_URL = `http://${IP_ADDRESS}:5000/api`; // Updated to use centralized IP_ADDRESS from ipConfig.js
 // Single authoritative base for dev specified in CONFIG
@@ -76,11 +77,14 @@ export async function probeAndFixBase() {
 
   for (const candidate of candidates) {
     try {
-      const testApi = axios.create({ baseURL: candidate, timeout: 1500 }); // Reduced timeout
+      console.log('Probing candidate:', candidate);
+      const testApi = axios.create({ baseURL: candidate, timeout: 10000 }); // Increased timeout for slow networks
       await testApi.get('/test'); // Use /test to match backend controller route
+      console.log('Probe successful for:', candidate);
       api.defaults.baseURL = candidate;
       return candidate;
     } catch (e) {
+      console.log('Probe failed for:', candidate, e.message);
       // Silently continue to next candidate
     }
   }
@@ -174,6 +178,27 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status === 401) {
+      // Try to refresh token
+      try {
+        const refreshToken = await AsyncStorage.getItem('refreshToken');
+        if (refreshToken) {
+          const refreshResponse = await api.post('/refresh', { refreshToken });
+          const newAccessToken = refreshResponse.data.accessToken;
+          if (newAccessToken) {
+            // Update stored token
+            await AsyncStorage.setItem('token', newAccessToken);
+            // Emit event to update context
+            DeviceEventEmitter.emit('tokenRefreshed', newAccessToken);
+            // Update header for future requests
+            error.config.headers.Authorization = `Bearer ${newAccessToken}`;
+            // Retry the original request
+            return api.request(error.config);
+          }
+        }
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+      }
+      // If refresh failed or no refresh token, clear storage
       await AsyncStorage.clear();
     }
     return Promise.reject(error);
@@ -202,7 +227,7 @@ export const authAPI = {
   verifyOTP: (data) => api.post('/otp/verify', data),
 
   // Profile management
-  updateProfile: (profileData) => api.put('/profile', profileData),
+  updateProfile: (profileData) => api.put('/mentors/mentor/profile', profileData),
 };
 
 // User/Settings APIs

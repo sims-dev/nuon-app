@@ -32,7 +32,6 @@ import SessionPreparation from '../screens/SessionPreparation';
 import VideoSession from '../screens/VideoSession';
 import RescheduleSessionScreen from '../screens/RescheduleSessionScreen';
 import MentorRegisterScreen from '../screens/MentorRegisterScreen';
-import MentorJoinScreen from '../screens/MentorJoinScreen';
 import MentorFeedbackScreen from '../screens/MentorFeedbackScreen';
 import NewsListScreen from '../screens/NewsListScreen';
 import NewsViewerScreen from '../screens/NewsViewerScreen';
@@ -198,11 +197,6 @@ const AppNavigator = () => {
           name="MentorAvailability"
           component={MentorAvailabilityScreen}
           options={{ title: 'Pick a Slot' }}
-        />
-        <Stack.Screen
-          name="MentorJoin"
-          component={MentorJoinScreen}
-          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="MentorFeedback"

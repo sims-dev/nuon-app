@@ -247,7 +247,7 @@ export default function LearningDetails({ navigation, route }) {
             <Text style={styles.videoTitle}>{data.videoTitle || 'Course Video'}</Text>
             <View style={styles.videoContainer}>
               <Video
-                source={{ uri: data.videoUrl }}
+                source={{ uri: getFullUrl(data.videoUrl) }}
                 style={styles.videoPlayer}
                 controls={true}
                 resizeMode="contain"

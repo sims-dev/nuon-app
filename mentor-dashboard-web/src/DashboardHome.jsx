@@ -54,9 +54,9 @@ const DashboardHome = () => {
       // Fetch real-time stats from backend
       const fetchStats = async () => {
         try {
-          const response = await fetch(`${process.env.REACT_APP_API_URL}/mentor/stats`, {
+          const response = await fetch(`${process.env.REACT_APP_API_URL}/mentors/mentor/stats`, {
             headers: {
-              'Authorization': `Bearer ${localStorage.getItem('mentor_token')}`
+              'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
             }
           });
           if (response.ok) {

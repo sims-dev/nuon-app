@@ -17,14 +17,19 @@ const NewsCard = ({ item, onPress }) => {
   const when = d.toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   const read = item.readingTime || item.readMinutes || Math.max(3, Math.min(10, Math.round((item.content || '').length / 600)));
 
-  // Get thumbnail from images array or videos array
+  // Get thumbnail from images array or videos array with fallback
   let image = null;
-  if (item.images && item.images.length > 0) {
-    image = item.images[0].url;
-  } else if (item.videos && item.videos.length > 0) {
-    image = item.videos[0].thumbnail;
+  if (item.images && item.images.length > 0 && item.images[0].url) {
+    image = item.images[0].url.startsWith('/uploads') ? `http://192.168.0.209:5000${item.images[0].url}` : item.images[0].url;
+  } else if (item.videos && item.videos.length > 0 && item.videos[0].thumbnail) {
+    image = item.videos[0].thumbnail.startsWith('/uploads') ? `http://192.168.0.209:5000${item.videos[0].thumbnail}` : item.videos[0].thumbnail;
+  } else if (item.imageUrl) {
+    image = item.imageUrl.startsWith('/uploads') ? `http://192.168.0.209:5000${item.imageUrl}` : item.imageUrl;
+  } else if (item.thumbnail) {
+    image = item.thumbnail.startsWith('/uploads') ? `http://192.168.0.209:5000${item.thumbnail}` : item.thumbnail;
   } else {
-    image = item.imageUrl || item.thumbnail;
+    // Fallback placeholder
+    image = `https://via.placeholder.com/300x160/6B7280/FFFFFF?text=${item.title?.substring(0, 10) || 'News'}`;
   }
 
   const hasVideo = item.videos && item.videos.length > 0;

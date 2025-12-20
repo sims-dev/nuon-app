@@ -8,11 +8,15 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Image,
+  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
 import { AuthContext } from '../contexts/AuthContext';
 import api, { authAPI } from '../services/api';
+import {launchImageLibrary} from 'react-native-image-picker';
+import { IP_ADDRESS } from '../config/ipConfig';
 
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
 const userSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
@@ -36,6 +40,7 @@ export function ProfileEditScreen({ navigation, route }) {
     registrationNumber: '',
     highestQualification: '',
   });
+  const [profilePicture, setProfilePicture] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -60,6 +65,36 @@ export function ProfileEditScreen({ navigation, route }) {
     setFormData({ ...formData, [field]: value || '' });
   };
 
+  const pickImage = async () => {
+    try {
+      const options = {
+        mediaType: 'photo',
+        includeBase64: false,
+        maxHeight: 500,
+        maxWidth: 500,
+        quality: 0.8,
+      };
+
+      launchImageLibrary(options, (response) => {
+        if (response.didCancel) {
+          return;
+        }
+
+        if (response.errorMessage) {
+          Alert.alert('Error', response.errorMessage);
+          return;
+        }
+
+        if (response.assets && response.assets[0]) {
+          setProfilePicture(response.assets[0]);
+        }
+      });
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
   const handleSave = async () => {
     // Validate required fields
     const requiredFields = ['fullName', 'email', 'specialization', 'experience'];
@@ -80,18 +115,47 @@ export function ProfileEditScreen({ navigation, route }) {
     setLoading(true);
 
     try {
+      let profilePictureUrl = authUser?.profilePicture || '';
+
+      // Upload image if selected
+      if (profilePicture) {
+        const formDataUpload = new FormData();
+        formDataUpload.append('image', {
+          uri: profilePicture.uri,
+          type: profilePicture.type || 'image/jpeg',
+          name: profilePicture.fileName || 'profile.jpg',
+        });
+
+        const uploadResponse = await fetch(`http://${IP_ADDRESS}:5000/api/upload/image`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${await AsyncStorage.getItem('token')}`,
+            // Don't set Content-Type for FormData, let fetch set it
+          },
+          body: formDataUpload,
+        });
+
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json();
+          profilePictureUrl = uploadData.url;
+        } else {
+          console.warn('Image upload failed, continuing with profile update');
+        }
+      }
+
       const payload = {
         name: formData.fullName,
         email: formData.email,
         phoneNumber: formData.phone,
         specialization: formData.specialization,
-        experience: formData.experience,
+        experience: parseInt(formData.experience) || 0,
         organization: formData.currentWorkplace,
         city: formData.city,
         state: formData.state,
         registrationNumber: formData.registrationNumber,
         highestQualification: formData.highestQualification,
         location: [formData.city, formData.state].filter(Boolean).join(', '),
+        profilePicture: profilePictureUrl,
       };
 
       const response = await authAPI.updateProfile(payload);
@@ -158,6 +222,29 @@ export function ProfileEditScreen({ navigation, route }) {
       </LinearGradient>
 
       <View style={styles.content}>
+
+        {/* Profile Picture */}
+        <View style={styles.profilePictureContainer}>
+          <TouchableOpacity onPress={pickImage} style={styles.profilePictureWrapper}>
+            {profilePicture ? (
+              <Image source={{ uri: profilePicture.uri }} style={styles.profilePicture} />
+            ) : authUser?.profilePicture ? (
+              <Image source={{ uri: authUser.profilePicture }} style={styles.profilePicture} />
+            ) : (
+              <View style={styles.profilePicturePlaceholder}>
+                <Text style={styles.profilePictureText}>
+                  {formData.fullName ? formData.fullName.charAt(0).toUpperCase() : 'U'}
+                </Text>
+              </View>
+            )}
+            <View style={styles.cameraIcon}>
+              <Text style={styles.cameraText}>📷</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={pickImage} style={styles.uploadButton}>
+            <Text style={styles.uploadButtonText}>Change Photo</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Personal Information */}
         <View style={styles.card}>
@@ -500,6 +587,65 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 8,
+  },
+  profilePictureContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  profilePictureWrapper: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  profilePicture: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: '#2563EB',
+  },
+  profilePicturePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: '#2563EB',
+  },
+  profilePictureText: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#6B7280',
+  },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#2563EB',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  cameraText: {
+    fontSize: 16,
+  },
+  uploadButton: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  uploadButtonText: {
+    color: '#2563EB',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

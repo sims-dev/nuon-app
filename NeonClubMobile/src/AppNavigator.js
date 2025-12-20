@@ -16,7 +16,7 @@ import SplashScreen from './screens/SplashScreen';
 import HomeScreen from './screens/HomeScreen';
 import LearningScreen from './screens/LearningScreen';
 import EngageScreen from './screens/EngageScreen';
-import MentorScreen from './screens/MentorScreen';
+import MentorshipScreen from './screens/MentorshipScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import MyLearningScreen from './screens/MyLearningScreen';
 
@@ -32,6 +32,16 @@ import CatalogScreen from './screens/CatalogScreen';
 import NewsListScreen from './screens/NewsListScreen';
 import NewsViewerScreen from './screens/NewsViewerScreen';
 import VideoPlayerScreen from './screens/VideoPlayerScreen';
+import Payment from './screens/Payment';
+
+// Mentor Flow Screens
+import MentorProfileScreen from './screens/MentorProfileScreen';
+import BookingSlots from './screens/BookingSlots';
+import SessionPreparation from './screens/SessionPreparation';
+import JoinSessionScreen from './screens/JoinSessionScreen';
+import VideoSession from './screens/VideoSession';
+import SessionFeedback from './screens/SessionFeedback';
+import RescheduleSession from './screens/RescheduleSession';
 
 // Context
 import { AuthContext, AuthProvider } from './contexts/AuthContext';
@@ -53,6 +63,7 @@ function AuthStack() {
       screenOptions={{
         headerShown: false,
         cardStyle: { backgroundColor: '#000' },
+        animationEnabled: false,
       }}
     >
       <Stack.Screen name="Splash" component={SplashScreen} />
@@ -69,6 +80,7 @@ function AppTabs() {
      <Tab.Navigator
        screenOptions={({ route }) => ({
          headerShown: false,
+         animationEnabled: false,
          tabBarIcon: ({ focused, color, size }) => {
            let icon;
            switch (route.name) {
@@ -128,7 +140,7 @@ function AppTabs() {
        />
        <Tab.Screen
          name="Mentor"
-         component={MentorScreen}
+         component={MentorshipScreen}
          options={{ title: 'Mentors' }}
        />
      </Tab.Navigator>
@@ -142,6 +154,7 @@ function AppStack() {
       screenOptions={{
         headerShown: false,
         cardStyle: { backgroundColor: '#000' },
+        animationEnabled: false,
       }}
     >
       <Stack.Group>
@@ -150,10 +163,15 @@ function AppStack() {
           component={AppTabs}
           options={{ animationEnabled: false }}
         />
+        <Stack.Screen
+          name="JoinSession"
+          component={JoinSessionScreen}
+          options={{ headerShown: false }}
+        />
       </Stack.Group>
 
       {/* Detail Screens as Modal Stack */}
-      <Stack.Group screenOptions={{ presentation: 'modal' }}>
+      <Stack.Group screenOptions={{ presentation: 'modal', animationEnabled: false }}>
         <Stack.Screen
           name="CourseDetail"
           component={CourseDetailScreen}
@@ -207,6 +225,46 @@ function AppStack() {
         <Stack.Screen
           name="VideoPlayer"
           component={VideoPlayerScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Payment"
+          component={Payment}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="MentorProfile"
+          component={MentorProfileScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="BookingSlots"
+          component={BookingSlots}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="SessionPreparation"
+          component={SessionPreparation}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="VideoSession"
+          component={VideoSession}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="SessionFeedback"
+          component={SessionFeedback}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="RescheduleSession"
+          component={RescheduleSession}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="SessionFeedback"
+          component={SessionFeedback}
           options={{ headerShown: false }}
         />
       </Stack.Group>

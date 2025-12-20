@@ -42,7 +42,10 @@ const userSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" 
 // CalendarIcon and PlayIcon are provided by wrapper components in src/components
 
 const HomeScreen = ({ navigation }) => {
-   const [courses, setCourses] = useState([]); // State for courses
+    const [courses, setCourses] = useState([]); // State for courses
+
+    // Navigation wrapper
+    const goToProfile = () => navigation.navigate('Profile');
    // Preseed with demo so UI is never blank; replaced when API returns
    const [news, setNews] = useState([
      {
@@ -162,21 +165,23 @@ const HomeScreen = ({ navigation }) => {
 
   // Initial load + socket wiring for real-time updates
   useEffect(() => {
-    fetchAdditionalData();
-    const sock = connectSocket();
-    const off1 = onSocket('new_event', fetchAdditionalData);
-    const off2 = onSocket('event_update', fetchAdditionalData);
-    const off3 = onSocket('new_workshop', fetchAdditionalData);
-    const off4 = onSocket('workshop_update', fetchAdditionalData);
-    const off5 = onSocket('new_course', fetchAdditionalData);
-    const off6 = onSocket('course_update', fetchAdditionalData);
-    const off7 = onSocket('new_news', fetchAdditionalData);
-    const off8 = onSocket('news_update', fetchAdditionalData);
-    return () => {
-      try { off1 && off1(); off2 && off2(); off3 && off3(); off4 && off4(); off5 && off5(); off6 && off6(); off7 && off7(); off8 && off8(); } catch {}
-      disconnectSocket();
-    };
-  }, []);
+    if (user) { // Wait for user to be loaded
+      fetchAdditionalData();
+      const sock = connectSocket();
+      const off1 = onSocket('new_event', fetchAdditionalData);
+      const off2 = onSocket('event_update', fetchAdditionalData);
+      const off3 = onSocket('new_workshop', fetchAdditionalData);
+      const off4 = onSocket('workshop_update', fetchAdditionalData);
+      const off5 = onSocket('new_course', fetchAdditionalData);
+      const off6 = onSocket('course_update', fetchAdditionalData);
+      const off7 = onSocket('new_news', fetchAdditionalData);
+      const off8 = onSocket('news_update', fetchAdditionalData);
+      return () => {
+        try { off1 && off1(); off2 && off2(); off3 && off3(); off4 && off4(); off5 && off5(); off6 && off6(); off7 && off7(); off8 && off8(); } catch {}
+        disconnectSocket();
+      };
+    }
+  }, [user]); // Depend on user
 
   const handleLogout = async () => {
     Alert.alert(
@@ -211,10 +216,7 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.headerTop}>
           <TouchableOpacity
             style={styles.profileSection}
-            onPress={() => {
-              console.log('[DEBUG] Home screen profile icon pressed, navigating to Profile');
-              navigation.navigate('Profile');
-            }}
+            onPress={goToProfile}
           >
             <View style={styles.profilePhotoContainer}>
               {user?.profilePhoto ? (
@@ -284,7 +286,7 @@ const HomeScreen = ({ navigation }) => {
             </View>
             <TouchableOpacity
               style={styles.bannerButtonNew}
-              onPress={() => navigation.navigate('ProfileSetup', { user, step: 1 })}
+              onPress={() => navigation.navigate('ProfileSetup')}
             >
               <Text style={styles.bannerButtonTextNew}>Complete</Text>
             </TouchableOpacity>

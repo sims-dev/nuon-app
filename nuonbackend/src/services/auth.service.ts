@@ -19,7 +19,7 @@ export class AuthService {
                 role: user.roles?.name || 'user'
             },
             process.env.ACCESS_SECRET || 'access-secret-key',
-            { expiresIn: '15m' }
+            { expiresIn: '24h' }
         );
     }
 
@@ -616,12 +616,42 @@ export class AuthService {
 
 
 
-    async refresh(): Promise<{ status: string; accessToken: string }> {
-        // TODO: Implement refresh token logic
-        // For now, return placeholder
-        throw new HttpException(
-            { message: 'Refresh token functionality not implemented', status: 'error' },
-            HttpStatus.NOT_IMPLEMENTED
-        );
+    async refresh(refreshToken: string): Promise<{ status: string; accessToken: string }> {
+        if (!refreshToken) {
+            throw new HttpException(
+                { message: 'Refresh token is required', status: 'error' },
+                HttpStatus.BAD_REQUEST
+            );
+        }
+
+        try {
+            // Verify the refresh token
+            const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET || 'refresh-secret-key') as any;
+
+            // Find the user
+            const user = await this.prisma.user.findUnique({
+                where: { id: BigInt(decoded.id) }
+            });
+
+            if (!user) {
+                throw new HttpException(
+                    { message: 'User not found', status: 'error' },
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+
+            // Generate new access token
+            const accessToken = this.generateAccessToken(user);
+
+            return {
+                status: 'success',
+                accessToken
+            };
+        } catch (error) {
+            throw new HttpException(
+                { message: 'Invalid refresh token', status: 'error' },
+                HttpStatus.UNAUTHORIZED
+            );
+        }
     }
 }

@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, FlatList, ActivityIndicator, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, FlatList, ActivityIndicator, Alert, Modal, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Calendar, Clock, Video, Search, Filter } from 'lucide-react-native';
+import { Calendar, Clock, Video, Search, Filter, Award, Timer } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { SvgXml } from 'react-native-svg';
+import { IP_ADDRESS } from '../config/ipConfig';
 import { mentorAPI } from '../api/mentorAPI';
+import socketService from '../services/socket';
+
+
+const BASE_URL = `http://${IP_ADDRESS}:5000`;
+const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
 
 const MentorshipScreen = ({ navigation, route }) => {
   const [displayName, setDisplayName] = useState('Priya');
@@ -13,6 +20,8 @@ const MentorshipScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Join Session state - removed since moved to separate screen
 
   useEffect(() => {
     const getProfile = async () => {
@@ -43,59 +52,82 @@ const MentorshipScreen = ({ navigation, route }) => {
     fetchMySessions();
   }, []);
 
+  // Socket.IO real-time updates
+  useEffect(() => {
+    let socketCleanup = [];
+
+    const initializeSocket = async () => {
+      try {
+        await socketService.connect();
+
+        // Listen for mentor availability updates
+        socketCleanup.push(socketService.on('mentor_availability_update', (data) => {
+          console.log('Mentor availability updated:', data);
+          fetchMentors(); // Refresh mentor list
+        }));
+
+        // Listen for new mentor availability
+        socketCleanup.push(socketService.on('new_mentor_availability', (data) => {
+          console.log('New mentor availability added:', data);
+          fetchMentors(); // Refresh mentor list
+        }));
+
+        // Listen for booking updates
+        socketCleanup.push(socketService.on('booking_update', (data) => {
+          console.log('Booking update:', data);
+          if (data.type === 'accepted' || data.type === 'rejected' || data.type === 'rescheduled') {
+            fetchMySessions(); // Refresh user's sessions
+          }
+        }));
+
+        // Listen for meeting ready notifications from mentor
+        socketCleanup.push(socketService.on('meeting_ready', (data) => {
+          console.log('Meeting ready notification:', data);
+          // Update the session with the meeting link
+          setMySessions(prev => prev.map(session =>
+            session.id === data.sessionId
+              ? { ...session, zoomLink: data.meetingLink, status: 'ready' }
+              : session
+          ));
+        }));
+
+        // Listen for mentor joined notifications
+        socketCleanup.push(socketService.on('mentor_joined', (data) => {
+          console.log('Mentor joined session:', data);
+          // Update session status
+          setMySessions(prev => prev.map(session =>
+            session.id === data.sessionId
+              ? { ...session, status: 'in_progress' }
+              : session
+          ));
+        }));
+
+        // Listen for new mentor notifications
+        socketCleanup.push(socketService.on('mentor_created', (data) => {
+          console.log('New mentor created:', data);
+          fetchMentors(); // Refresh mentor list
+        }));
+
+      } catch (error) {
+        console.error('Socket initialization failed:', error);
+      }
+    };
+
+    initializeSocket();
+
+    return () => {
+      socketCleanup.forEach(cleanup => cleanup && cleanup());
+    };
+  }, []);
+
   const fetchMentors = async () => {
     try {
       setLoading(true);
       const mentors = await mentorAPI.getAllMentors();
-      setAvailableMentors(Array.isArray(mentors) && mentors.length > 0 ? mentors : [
-        {
-          id: 1,
-          name: 'Dr. Sunita Verma',
-          specialization: 'Critical Care',
-          experience: '15+ years',
-          rating: 4.9,
-          sessions: 340,
-          image: 'https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBudXJzZSUyMGhlYWx0aGNhcmV8ZW58MXx8fHwxNzYwMzQ1MzQ1fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-          available: true,
-          price: 1999,
-          responseTime: '2 hours',
-          languages: ['English', 'Hindi', 'Marathi'],
-          qualifications: [
-            'MSc Nursing - Critical Care',
-            'BSc Nursing - Delhi University',
-            'ICU Certification - AIIMS',
-          ],
-          expertise: [
-            'Critical Care Management',
-            'Emergency Response',
-            'Ventilator Management',
-            'Patient Safety Protocols',
-            'Clinical Leadership',
-          ],
-          bio: 'With over 15 years of experience in critical care nursing, I have worked in top hospitals across India including AIIMS and Apollo. I specialize in helping nurses advance their careers in emergency and critical care settings.',
-          reviews: [
-            {
-              id: 1,
-              name: 'Neha Sharma',
-              rating: 5,
-              date: 'Oct 2024',
-              comment: 'Dr. Verma provided excellent guidance on my ICU rotation. Her practical tips helped me gain confidence.',
-              image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
-            },
-          ],
-          achievements: [
-            { icon: 'award', label: 'Top Rated Mentor' },
-            { icon: 'users', label: '340+ Sessions' },
-            { icon: 'star', label: '4.9 Rating' },
-            { icon: 'clock', label: 'Quick Response' },
-          ],
-          availability: [
-            'Monday - Friday: 3:00 PM - 8:00 PM',
-            'Saturday: 10:00 AM - 6:00 PM',
-            'Sunday: By appointment',
-          ],
-        },
-      ]);
+      setAvailableMentors(mentors);
+    } catch (error) {
+      console.error('Error fetching mentors:', error);
+      setAvailableMentors([]);
     } finally {
       setLoading(false);
     }
@@ -107,22 +139,12 @@ const MentorshipScreen = ({ navigation, route }) => {
       if (token) {
         const sessions = await mentorAPI.getMyBookings(token);
         setMySessions(sessions);
+      } else {
+        setMySessions([]);
       }
     } catch (error) {
       console.error('Error fetching sessions:', error);
-      // Keep static data as fallback
-      setMySessions([
-        {
-          id: 1,
-          mentor: 'Dr. Anjali Reddy',
-          topic: 'Advanced Wound Care',
-          date: 'Tomorrow',
-          time: '3:00 PM',
-          duration: '45 mins',
-          image: 'https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBudXJzZSUyMGhlYWx0aGNhcmV8ZW58MXx8fHwxNzYwMzQ1MzQ1fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-          type: 'Video Call',
-        },
-      ]);
+      setMySessions([]);
     }
   };
 
@@ -140,33 +162,15 @@ const MentorshipScreen = ({ navigation, route }) => {
     }
   };
 
-  const upcomingSessions = [
-    {
-      id: 1,
-      mentor: 'Dr. Anjali Reddy',
-      topic: 'Advanced Wound Care',
-      date: 'Tomorrow',
-      time: '3:00 PM',
-      duration: '45 mins',
-      image: 'https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBudXJzZSUyMGhlYWx0aGNhcmV8ZW58MXx8fHwxNzYwMzQ1MzQ1fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      type: 'Video Call',
-    },
-    {
-      id: 2,
-      mentor: 'Nurse Priya Singh',
-      topic: 'Career Development Q&A',
-      date: 'Oct 15',
-      time: '5:00 PM',
-      duration: '30 mins',
-      image: 'https://images.unsplash.com/photo-1747833305853-d43937d88971?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtZW50b3JzaGlwJTIwcHJvZmVzc2lvbmFsfGVufDF8fHx8MTc2MDM0NTM0Nnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      type: 'Video Call',
-    },
-  ];
 
   const filteredMentors = availableMentors.filter(mentor =>
     mentor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     mentor.specialization.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleJoinSession = (session) => {
+    navigation.navigate('JoinSession', { session });
+  };
 
   return (
     <ScrollView style={styles.container}>
@@ -217,7 +221,11 @@ const MentorshipScreen = ({ navigation, route }) => {
                 <View key={mentor.id} style={styles.mentorCard}>
                   <View style={styles.mentorInfo}>
                     <View style={styles.mentorImageContainer}>
-                      <Image source={{ uri: mentor.image }} style={styles.mentorImage} />
+                      <Image
+                        source={{ uri: getFullUrl(mentor.profilePicture || mentor.image) }}
+                        style={styles.mentorImage}
+                        onError={() => console.log('Image load error for mentor:', mentor.id)}
+                      />
                     </View>
                     <View style={styles.mentorDetails}>
                       <View style={styles.mentorHeader}>
@@ -232,6 +240,12 @@ const MentorshipScreen = ({ navigation, route }) => {
                         <Text style={styles.statText}>{mentor.experience}</Text>
                         <Text style={styles.dot}>•</Text>
                         <Text style={styles.statText}>{mentor.sessions} sessions</Text>
+                        {mentor.phoneNumber && (
+                          <>
+                            <Text style={styles.dot}>•</Text>
+                            <Text style={styles.statText}>{mentor.phoneNumber}</Text>
+                          </>
+                        )}
                       </View>
                     </View>
                   </View>
@@ -240,7 +254,11 @@ const MentorshipScreen = ({ navigation, route }) => {
                       style={styles.viewProfileButton}
                       onPress={() => navigation.navigate('MentorProfile', { mentor })}
                     >
-                      <Text style={styles.viewProfileText}>View Profile</Text>
+                      <View style={styles.viewProfileContent}>
+                       
+                        <Text style={styles.viewProfileText}>View Profile</Text>
+                     
+                      </View>
                     </TouchableOpacity>
                     <LinearGradient colors={['#7c3aed', '#ec4899']} style={[styles.bookSessionButton, !mentor.available && styles.disabledButton]} start={{x: 0, y: 0}} end={{x: 1, y: 0}}>
                       <TouchableOpacity
@@ -263,50 +281,70 @@ const MentorshipScreen = ({ navigation, route }) => {
           {/* My Sessions Tab */}
           {activeTab === 'upcoming' && (
             <View style={styles.sessionList}>
-              {upcomingSessions.length > 0 ? (
-                upcomingSessions.map((session) => (
-                  <View key={session.id} style={styles.sessionCard}>
-                    <View style={styles.sessionInfo}>
-                      <View style={styles.sessionImageContainer}>
-                        <Image source={{ uri: session.image }} style={styles.sessionImage} />
-                      </View>
-                      <View style={styles.sessionDetails}>
-                        <Text style={styles.sessionMentor}>{session.mentor}</Text>
-                        <Text style={styles.sessionTopic}>{session.topic}</Text>
-                        <View style={styles.sessionMeta}>
-                          <View style={styles.sessionTime}>
-                            <Calendar style={styles.icon} />
-                            <Text style={styles.timeText}>{session.date}</Text>
-                            <Clock style={[styles.icon, styles.clockIcon]} />
-                            <Text style={styles.timeText}>{session.time}</Text>
-                          </View>
-                          <View style={styles.sessionType}>
-                            <View style={styles.typeBadge}>
-                              <Video style={styles.videoIcon} />
-                              <Text style={styles.typeText}>{session.type}</Text>
+              {mySessions.length > 0 ? (
+                mySessions.map((session) => (
+                  <View key={session.id}>
+                    <View style={styles.sessionCard}>
+                      <View style={styles.sessionInfo}>
+                        <View style={styles.sessionImageContainer}>
+                          <Image
+                            source={{ uri: getFullUrl(session.mentor?.profilePicture || session.image) }}
+                            style={styles.sessionImage}
+                            onError={() => console.log('Image load error for session:', session.id)}
+                          />
+                        </View>
+                        <View style={styles.sessionDetails}>
+                          <Text style={styles.sessionMentor}>{session.mentor}</Text>
+                          <Text style={styles.sessionTopic}>{session.topic}</Text>
+                          <View style={styles.sessionMeta}>
+                            <View style={styles.sessionTime}>
+                              <Calendar style={styles.icon} />
+                              <Text style={styles.timeText}>{session.date}</Text>
+                              <Clock style={[styles.icon, styles.clockIcon]} />
+                              <Text style={styles.timeText}>{session.time}</Text>
                             </View>
-                            <View style={styles.durationBadge}>
-                              <Text style={styles.durationText}>{session.duration}</Text>
+                            <View style={styles.sessionType}>
+                              <View style={styles.typeBadge}>
+                                <Video style={styles.videoIcon} />
+                                <Text style={styles.typeText}>{session.type}</Text>
+                              </View>
+                              <View style={styles.durationBadge}>
+                                <Text style={styles.durationText}>{session.duration}</Text>
+                              </View>
                             </View>
                           </View>
                         </View>
                       </View>
-                    </View>
-                    <View style={styles.sessionButtons}>
-                      <TouchableOpacity
-                        style={styles.rescheduleButton}
-                        onPress={() => navigation.navigate('RescheduleSession', { session })}
-                      >
-                        <Text style={styles.rescheduleText}>Reschedule</Text>
-                      </TouchableOpacity>
-                      <LinearGradient colors={['#10b981', '#10b981']} style={styles.joinButton} start={{x: 0, y: 0}} end={{x: 1, y: 0}}>
+                      <View style={styles.sessionButtons}>
                         <TouchableOpacity
-                          style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}
-                          onPress={() => navigation.navigate('SessionPreparation', { session })}
+                          style={styles.rescheduleButton}
+                          onPress={() => navigation.navigate('RescheduleSession', { session })}
                         >
-                          <Text style={styles.joinText}>Join Session</Text>
+                          <Text style={styles.rescheduleText}>Reschedule</Text>
                         </TouchableOpacity>
-                      </LinearGradient>
+                        <LinearGradient
+                          colors={session.status === 'ready' ? ['#10b981', '#059669'] : ['#10b981', '#10b981']}
+                          style={styles.joinButton}
+                          start={{x: 0, y: 0}}
+                          end={{x: 1, y: 0}}
+                        >
+                          <TouchableOpacity
+                            style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}
+                            onPress={() => handleJoinSession(session)}
+                          >
+                            <Text style={styles.joinText}>
+                              {session.status === 'ready' ? 'Join Now' : 'Join Session'}
+                            </Text>
+                          </TouchableOpacity>
+                        </LinearGradient>
+                      </View>
+
+                      {/* Meeting Ready Status */}
+                      {session.status === 'ready' && (
+                        <View style={styles.meetingReadyBadge}>
+                          <Text style={styles.meetingReadyText}>🎥 Meeting Ready - Click Join Now!</Text>
+                        </View>
+                      )}
                     </View>
                   </View>
                 ))
@@ -535,9 +573,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
   },
+  viewProfileContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewProfileIcon: {
+    marginHorizontal: 4,
+  },
   viewProfileText: {
     fontSize: 14,
     fontWeight: '600',
+    marginHorizontal: 4,
   },
   bookSessionButton: {
     flex: 1,
@@ -770,6 +817,21 @@ const styles = StyleSheet.create({
   completeButtonText: {
     color: 'white',
     fontWeight: '600',
+  },
+  meetingReadyBadge: {
+    marginTop: 12,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: '#16a34a',
+  },
+  meetingReadyText: {
+    color: '#166534',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
 

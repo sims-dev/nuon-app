@@ -260,13 +260,15 @@ export class OtpService {
                     userData = {
                         name: identifier.split('@')[0],
                         email: identifier.toLowerCase(),
-                        roleId: nurseRole.id
+                        roleId: nurseRole.id,
+                        experience: null
                     };
                 } else {
                     userData = {
                         name: null,
                         phoneNumber: identifier,
-                        roleId: nurseRole.id
+                        roleId: nurseRole.id,
+                        experience: null
                     };
                 }
 

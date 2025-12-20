@@ -2,21 +2,25 @@ import React, { createContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api, { probeAndFixBase } from '../services/api';
 import socketService from '../services/socket';
+import { DeviceEventEmitter } from 'react-native';
 
 export const AuthContext = createContext({
   user: null,
   token: null,
+  refreshToken: null,
   loading: true,
   signIn: async () => {},
   signUp: async () => {},
   signOut: async () => {},
   updateUser: async () => {},
   setToken: () => {},
+  setRefreshToken: () => {},
 });
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setTokenState] = useState(null);
+  const [refreshToken, setRefreshTokenState] = useState(null);
   const [loading, setLoading] = useState(true);
   const loaded = useRef(false);
 
@@ -34,6 +38,7 @@ export const AuthProvider = ({ children }) => {
         if (!token) {
           token = await AsyncStorage.getItem('accessToken');
         }
+        let refreshToken = await AsyncStorage.getItem('refreshToken');
         // user may be stored under 'user' (mobile) or 'profile' (older flows)
         let userStr = await AsyncStorage.getItem('user');
         if (!userStr) {
@@ -43,6 +48,7 @@ export const AuthProvider = ({ children }) => {
         if (token && userStr) {
           const user = JSON.parse(userStr);
           setTokenState(token);
+          setRefreshTokenState(refreshToken);
           setUser(user);
           api.defaults.headers.common.Authorization = `Bearer ${token}`;
           console.log('[AuthContext] Loaded existing auth data');
@@ -57,18 +63,31 @@ export const AuthProvider = ({ children }) => {
     };
 
     loadAuth();
+
+    // Listen for token refresh events
+    const tokenRefreshListener = DeviceEventEmitter.addListener('tokenRefreshed', (newToken) => {
+      setTokenState(newToken);
+      api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+      socketService.updateToken(newToken);
+    });
+
+    return () => {
+      tokenRefreshListener.remove();
+    };
   }, []);
 
   const signIn = async (credentials) => {
     try {
       // Backend exposes auth under /api/auth/login and returns { accessToken, refreshToken, user }
       const res = await api.post('/auth/login', credentials);
-      const { accessToken: tkn, user: usr } = res.data;
+      const { accessToken: tkn, refreshToken: rTkn, user: usr } = res.data;
       // persist
       await AsyncStorage.setItem('token', tkn);
+      await AsyncStorage.setItem('refreshToken', rTkn);
       await AsyncStorage.setItem('user', JSON.stringify(usr));
       api.defaults.headers.common.Authorization = `Bearer ${tkn}`;
       setTokenState(tkn);
+      setRefreshTokenState(rTkn);
       setUser(usr);
 
       // Connect socket with new token
@@ -105,19 +124,25 @@ export const AuthProvider = ({ children }) => {
   // Helper function to check if profile is incomplete
   const checkProfileIncomplete = (userData) => {
     if (!userData) return true;
-    
-    // Check required fields for professional profile
+
+    // Check required fields for complete profile
     const requiredFields = [
-      'organization',
+      'name',
+      'email',
+      'specialization',
+      'experience',
+      'organization', // currentWorkplace
       'registrationNumber',
-      'highestQualification'
+      'highestQualification',
+      'city',
+      'state'
     ];
-    
+
     const missingFields = requiredFields.filter(field => {
       const value = userData[field];
       return !value || value === '' || value === 'Not specified';
     });
-    
+
     console.log('[AuthContext] Profile check - missing fields:', missingFields);
     return missingFields.length > 0;
   };
@@ -139,10 +164,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const setRefreshToken = (newRefreshToken) => {
+    setRefreshTokenState(newRefreshToken);
+  };
+
   const signOut = async () => {
     await AsyncStorage.clear();
     setUser(null);
     setTokenState(null);
+    setRefreshTokenState(null);
     delete api.defaults.headers.common.Authorization;
 
     // Disconnect socket on sign out
@@ -150,7 +180,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, signIn, signUp, signOut, updateUser, setToken }}>
+    <AuthContext.Provider value={{ user, token, refreshToken, loading, signIn, signUp, signOut, updateUser, setToken, setRefreshToken }}>
       {children}
     </AuthContext.Provider>
   );

@@ -24,7 +24,7 @@ const config = {
   resolver: {
     // make sure svg is handled by the transformer (not as asset)
     assetExts: defaultConfig.resolver.assetExts.filter(ext => ext !== 'svg'),
-    sourceExts: [...defaultConfig.resolver.sourceExts, 'svg'],
+    sourceExts: [...defaultConfig.resolver.sourceExts, 'svg', 'ts'],
   },
 };
 

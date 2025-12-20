@@ -1,12 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image, ScrollView, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, TouchableOpacity, Image, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { BookOpen, Calendar, Clock, Play, CheckCircle, Users, Heart, Download, ChevronRight, Video } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
+import { courseAPI, eventAPI, workshopAPI, conferenceAPI } from '../services/api';
+import { IP_ADDRESS } from '../config/ipConfig';
+
+const BASE_URL = `http://${IP_ADDRESS}:5000`;
+const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
 
 const MyLearningScreen = ({ navigation }) => {
-   const [displayName, setDisplayName] = useState('Priya');
-   const [activeTab, setActiveTab] = useState('courses');
+    const [displayName, setDisplayName] = useState('Priya');
+    const [activeTab, setActiveTab] = useState('courses');
+    const [loading, setLoading] = useState(true);
+    const [enrolledCourses, setEnrolledCourses] = useState([]);
+    const [registeredEvents, setRegisteredEvents] = useState([]);
+    const [registeredWorkshops, setRegisteredWorkshops] = useState([]);
+    const [enrolledWellness, setEnrolledWellness] = useState([]);
 
   useEffect(() => {
     const loadName = async () => {
@@ -26,146 +36,172 @@ const MyLearningScreen = ({ navigation }) => {
     loadName();
   }, []);
 
-  const enrolledCourses = [
-    {
-      id: 1,
-      title: 'Advanced Patient Care',
-      instructor: 'Dr. Sarah Johnson',
-      image: 'https://images.unsplash.com/photo-1758101512269-660feabf64fd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtZWRpY2FsJTIwdHJhaW5pbmclMjBjbGFzc3Jvb218ZW58MXx8fHwxNzYwMzQ1MzQ2fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      progress: 65,
-      totalLessons: 24,
-      completedLessons: 15,
-      duration: '8 weeks',
-      enrolled: '2024-09-15',
-      nextLesson: 'Lesson 16: Emergency Response',
-      certificate: false,
-    },
-    {
-      id: 2,
-      title: 'Medication Management Basics',
-      instructor: 'Nurse Priya Singh',
-      image: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtZWRpY2F0aW9uJTIwbWFuYWdlbWVudHxlbnwxfHx8fDE3NjA0NTM2NzR8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      progress: 100,
-      totalLessons: 12,
-      completedLessons: 12,
-      duration: '4 weeks',
-      enrolled: '2024-08-20',
-      nextLesson: null,
-      certificate: true,
-    },
-  ];
+  useEffect(() => {
+    const fetchLearningData = async () => {
+      try {
+        setLoading(true);
+        const [coursesRes, eventsRes, workshopsRes] = await Promise.all([
+          courseAPI.getMyCourses().catch(() => ({ data: { courses: [] } })),
+          eventAPI.getMyEvents().catch(() => ({ data: { events: [] } })),
+          workshopAPI.getMyWorkshops().catch(() => ({ data: { workshops: [] } })),
+        ]);
+        let courses = Array.isArray(coursesRes?.data?.courses) ? coursesRes.data.courses : [];
+        let events = Array.isArray(eventsRes?.data?.events) ? eventsRes.data.events : [];
+        let workshops = Array.isArray(workshopsRes?.data?.workshops) ? workshopsRes.data.workshops : [];
 
-  const registeredEvents = [
-    {
-      id: 1,
-      title: 'Healthcare Summit 2024',
-      type: 'Conference',
-      image: 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoZWFsdGhjYXJlJTIwY29uZmVyZW5jZXxlbnwxfHx8fDE3NjA0NTM2NzV8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      date: '2024-10-18',
-      time: '9:00 AM - 5:00 PM',
-      location: 'India Expo Centre, Delhi',
-      venue: 'Hall 5, India Expo Centre',
-      status: 'upcoming',
-      daysUntil: 2,
-      hasJoinLink: false,
-    },
-    {
-      id: 2,
-      title: 'Nursing Excellence Awards',
-      type: 'Event',
-      image: 'https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxudXJzaW5nJTIwYXdhcmR8ZW58MXx8fHwxNzYwNDUzNjc2fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      date: '2024-09-25',
-      time: '6:00 PM - 9:00 PM',
-      location: 'Hotel Taj Palace, Delhi',
-      venue: 'Grand Ballroom, Taj Palace',
-      status: 'completed',
-      daysUntil: null,
-      hasJoinLink: false,
-    },
-  ];
+        // If no real data, show demo data
+        if (courses.length === 0) {
+          courses = [
+            {
+              id: 'demo-course-1',
+              title: 'Advanced Nursing Care Techniques',
+              instructor: 'Dr. Sarah Johnson',
+              image: 'https://via.placeholder.com/300x160/4F46E5/FFFFFF?text=Course+1',
+              progress: 75,
+              totalLessons: 12,
+              completedLessons: 9,
+              duration: '8 hours',
+              nextLesson: 'Patient Monitoring Systems'
+            },
+            {
+              id: 'demo-course-2',
+              title: 'Mental Health Nursing',
+              instructor: 'Prof. Michael Chen',
+              image: 'https://via.placeholder.com/300x160/059669/FFFFFF?text=Course+2',
+              progress: 45,
+              totalLessons: 10,
+              completedLessons: 4,
+              duration: '6 hours',
+              nextLesson: 'Crisis Intervention'
+            }
+          ];
+        }
 
-  const registeredWorkshops = [
-    {
-      id: 1,
-      title: 'Wound Care Management Workshop',
-      instructor: 'Dr. Anjali Reddy',
-      type: 'Live Workshop',
-      image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtZWRpY2FsJTIwd29ya3Nob3B8ZW58MXx8fHwxNzYwNDUzNjc2fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      date: '2024-10-20',
-      time: '2:00 PM - 5:00 PM',
-      location: 'Virtual (Zoom)',
-      joinLink: 'https://zoom.us/j/123456789',
-      status: 'upcoming',
-      daysUntil: 4,
-      duration: '3 hours',
-    },
-    {
-      id: 2,
-      title: 'IV Therapy Techniques',
-      instructor: 'Nurse Kumar',
-      type: 'Hands-on Workshop',
-      image: 'https://images.unsplash.com/photo-1581594549595-35f6edc7b762?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtZWRpY2FsJTIwdHJhaW5pbmd8ZW58MXx8fHwxNzYwNDUzNjc3fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      date: '2024-09-18',
-      time: '10:00 AM - 1:00 PM',
-      location: 'Training Center, AIIMS Delhi',
-      joinLink: null,
-      status: 'completed',
-      daysUntil: null,
-      duration: '3 hours',
-    },
-  ];
+        if (events.length === 0) {
+          events = [
+            {
+              id: 'demo-event-1',
+              title: 'Nursing Leadership Summit 2024',
+              type: 'Conference',
+              image: 'https://via.placeholder.com/300x160/EC4899/FFFFFF?text=Event+1',
+              date: '2024-12-15',
+              time: '9:00 AM',
+              location: 'Virtual',
+              status: 'upcoming'
+            },
+            {
+              id: 'demo-event-2',
+              title: 'Healthcare Innovation Workshop',
+              type: 'Workshop',
+              image: 'https://via.placeholder.com/300x160/7C3AED/FFFFFF?text=Event+2',
+              date: '2024-11-20',
+              time: '2:00 PM',
+              location: 'Mumbai',
+              status: 'completed'
+            }
+          ];
+        }
 
-  const enrolledWellness = [
-    {
-      id: 1,
-      title: 'Stress Management for Healthcare Workers',
-      type: 'Mental Wellness',
-      category: 'wellness',
-      image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
-      progress: 40,
-      totalSessions: 8,
-      completedSessions: 3,
-      nextSession: 'Session 4: Breathing Techniques',
-      status: 'active',
-      enrolled: '2024-09-01',
-    },
-    {
-      id: 2,
-      title: '30-Day Nurse Fitness Challenge',
-      instructor: 'Fitness Coach Priya',
-      type: 'Fitness Challenge',
-      category: 'fitness',
-      image: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
-      progress: 75,
-      totalDays: 30,
-      completedDays: 22,
-      nextActivity: 'Day 23: Core Strength Training',
-      status: 'active',
-      enrolled: '2024-08-15',
-    },
-    {
-      id: 3,
-      title: 'Mindfulness & Meditation for Nurses',
-      type: 'Wellness Workshop',
-      category: 'wellness',
-      image: 'https://images.unsplash.com/photo-1545389336-cf090694435e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
-      progress: 100,
-      totalSessions: 6,
-      completedSessions: 6,
-      status: 'completed',
-      enrolled: '2024-07-20',
-      certificate: true,
-    },
-  ];
+        if (workshops.length === 0) {
+          workshops = [
+            {
+              id: 'demo-workshop-1',
+              title: 'Emergency Response Training',
+              instructor: 'Dr. Robert Davis',
+              image: 'https://via.placeholder.com/300x160/DC2626/FFFFFF?text=Workshop+1',
+              date: '2024-12-20',
+              time: '10:00 AM',
+              location: 'Virtual',
+              duration: '4 hours',
+              status: 'upcoming'
+            },
+            {
+              id: 'demo-workshop-2',
+              title: 'Patient Care Excellence',
+              instructor: 'Ms. Lisa Wong',
+              image: 'https://via.placeholder.com/300x160/EA580C/FFFFFF?text=Workshop+2',
+              date: '2024-11-10',
+              time: '1:00 PM',
+              location: 'Delhi',
+              duration: '3 hours',
+              status: 'completed'
+            }
+          ];
+        }
 
-  const upcomingEvents = registeredEvents.filter(e => e.status === 'upcoming');
-  const completedEvents = registeredEvents.filter(e => e.status === 'completed');
-  const upcomingWorkshops = registeredWorkshops.filter(w => w.status === 'upcoming');
-  const completedWorkshops = registeredWorkshops.filter(w => w.status === 'completed');
-  const inProgressCourses = enrolledCourses.filter(c => c.progress < 100);
-  const completedCourses = enrolledCourses.filter(c => c.progress === 100);
-  const activeWellness = enrolledWellness.filter(w => w.status === 'active');
-  const completedWellness = enrolledWellness.filter(w => w.status === 'completed');
+        setEnrolledCourses(courses);
+        setRegisteredEvents(events);
+        setRegisteredWorkshops(workshops);
+        setEnrolledWellness([]); // TODO: Add wellness API if available
+      } catch (error) {
+        console.error('Error fetching learning data:', error);
+        // Set demo data on error
+        setEnrolledCourses([
+          {
+            id: 'demo-course-1',
+            title: 'Advanced Nursing Care Techniques',
+            instructor: 'Dr. Sarah Johnson',
+            image: 'https://via.placeholder.com/300x160/4F46E5/FFFFFF?text=Course+1',
+            progress: 75,
+            totalLessons: 12,
+            completedLessons: 9,
+            duration: '8 hours',
+            nextLesson: 'Patient Monitoring Systems'
+          }
+        ]);
+        setRegisteredEvents([
+          {
+            id: 'demo-event-1',
+            title: 'Nursing Leadership Summit 2024',
+            type: 'Conference',
+            image: 'https://via.placeholder.com/300x160/EC4899/FFFFFF?text=Event+1',
+            date: '2024-12-15',
+            time: '9:00 AM',
+            location: 'Virtual',
+            status: 'upcoming'
+          }
+        ]);
+        setRegisteredWorkshops([
+          {
+            id: 'demo-workshop-1',
+            title: 'Emergency Response Training',
+            instructor: 'Dr. Robert Davis',
+            image: 'https://via.placeholder.com/300x160/DC2626/FFFFFF?text=Workshop+1',
+            date: '2024-12-20',
+            time: '10:00 AM',
+            location: 'Virtual',
+            duration: '4 hours',
+            status: 'upcoming'
+          }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLearningData();
+  }, []);
+
+
+
+
+
+  const upcomingEvents = useMemo(() => (registeredEvents || []).filter(e => e.status === 'upcoming'), [registeredEvents]);
+  const completedEvents = useMemo(() => (registeredEvents || []).filter(e => e.status === 'completed'), [registeredEvents]);
+  const upcomingWorkshops = useMemo(() => (registeredWorkshops || []).filter(w => w.status === 'upcoming'), [registeredWorkshops]);
+  const completedWorkshops = useMemo(() => (registeredWorkshops || []).filter(w => w.status === 'completed'), [registeredWorkshops]);
+  const inProgressCourses = useMemo(() => (enrolledCourses || []).filter(c => c.progress < 100), [enrolledCourses]);
+  const completedCourses = useMemo(() => (enrolledCourses || []).filter(c => c.progress === 100), [enrolledCourses]);
+  const activeWellness = useMemo(() => (enrolledWellness || []).filter(w => w.status === 'active'), [enrolledWellness]);
+  const completedWellness = useMemo(() => (enrolledWellness || []).filter(w => w.status === 'completed'), [enrolledWellness]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#f9fafb', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#7c3aed" />
+        <Text style={{ marginTop: 16, color: '#6b7280' }}>Loading your learning data...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
@@ -231,7 +267,11 @@ const MyLearningScreen = ({ navigation }) => {
                     onPress={() => navigation.navigate('CourseViewer', { course })}
                   >
                     <View style={styles.cardImageContainer}>
-                      <Image source={{ uri: course.image }} style={styles.cardImage} />
+                      <Image
+                        source={{ uri: getFullUrl(course.image) }}
+                        style={styles.cardImage}
+                        onError={() => console.log('Image load error for course:', course.id)}
+                      />
                       <View style={styles.cardOverlay} />
                       <View style={styles.statusPill}>
                         <Text style={styles.statusPillText}>In Progress</Text>
@@ -251,7 +291,7 @@ const MyLearningScreen = ({ navigation }) => {
                       <View style={styles.cardRow}>
                         <View style={styles.iconText}>
                           <BookOpen style={styles.icon} />
-                          <Text>{course.completedLessons}/{course.totalLessons} lessons</Text>
+                          <Text>{course.completedLessons || 0}/{course.totalLessons || course.lessons?.length || 0} lessons</Text>
                         </View>
                         <View style={styles.iconText}>
                           <Clock style={styles.icon} />
@@ -285,7 +325,11 @@ const MyLearningScreen = ({ navigation }) => {
                 </View>
                 {completedCourses.map((course) => (
                   <View key={course.id} style={styles.completedCard}>
-                    <Image source={{ uri: course.image }} style={styles.completedImage} />
+                    <Image
+                      source={{ uri: getFullUrl(course.image) }}
+                      style={styles.completedImage}
+                      onError={() => console.log('Image load error for completed course:', course.id)}
+                    />
                     <View style={styles.completedContent}>
                     <View style={styles.completedHeader}>
                      
@@ -398,7 +442,11 @@ const MyLearningScreen = ({ navigation }) => {
                     style={styles.eventCard}
                     onPress={() => navigation.navigate('EventViewer', { event })}
                   >
-                    <Image source={{ uri: event.image }} style={styles.eventImage} />
+                    <Image
+                      source={{ uri: getFullUrl(event.image) }}
+                      style={styles.eventImage}
+                      onError={() => console.log('Image load error for event:', event.id)}
+                    />
                     <View style={styles.eventContent}>
                       <View style={styles.eventHeader}>
                         <View>
@@ -438,7 +486,11 @@ const MyLearningScreen = ({ navigation }) => {
                 <Text style={styles.sectionTitle}>Past Events</Text>
                 {completedEvents.map((event) => (
                   <View key={event.id} style={[styles.eventCard, styles.pastEvent]}>
-                    <Image source={{ uri: event.image }} style={[styles.eventImage, styles.grayscale]} />
+                    <Image
+                      source={{ uri: getFullUrl(event.image) }}
+                      style={[styles.eventImage, styles.grayscale]}
+                      onError={() => console.log('Image load error for completed event:', event.id)}
+                    />
                     <View style={styles.eventContent}>
                       <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
                       <Text style={styles.pastDate}>
@@ -468,7 +520,11 @@ const MyLearningScreen = ({ navigation }) => {
                     style={styles.workshopCard}
                     onPress={() => navigation.navigate('WorkshopViewer', { workshop })}
                   >
-                    <Image source={{ uri: workshop.image }} style={styles.workshopImage} />
+                    <Image
+                      source={{ uri: getFullUrl(workshop.image) }}
+                      style={styles.workshopImage}
+                      onError={() => console.log('Image load error for workshop:', workshop.id)}
+                    />
                     <View style={styles.workshopContent}>
                       <View style={styles.workshopHeader}>
                         <View>
@@ -512,7 +568,11 @@ const MyLearningScreen = ({ navigation }) => {
                 <Text style={styles.sectionTitle}>Past Workshops</Text>
                 {completedWorkshops.map((workshop) => (
                   <View key={workshop.id} style={[styles.workshopCard, styles.pastWorkshop]}>
-                    <Image source={{ uri: workshop.image }} style={[styles.workshopImage, styles.grayscale]} />
+                    <Image
+                      source={{ uri: getFullUrl(workshop.image) }}
+                      style={[styles.workshopImage, styles.grayscale]}
+                      onError={() => console.log('Image load error for completed workshop:', workshop.id)}
+                    />
                     <View style={styles.workshopContent}>
                       <View style={styles.workshopHeader}>
                         <View>

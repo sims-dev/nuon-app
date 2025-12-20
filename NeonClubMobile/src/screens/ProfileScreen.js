@@ -14,8 +14,8 @@ import { CommonActions } from '@react-navigation/native';
 import { useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import api, { courseAPI, nccAPI } from '../services/api';
-import { useSafePress } from '../hooks/useSafePress';
 import { SvgXml } from 'react-native-svg';
+import { checkProfileCompletion } from '../utils/profileUtils';
 
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
 const mailSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`;
@@ -34,6 +34,7 @@ const fileTextSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="
 const logOutSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>`;
 const editSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
 const cameraSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.828 14.828a4 4 0 0 1-5.656 0"/><path d="M9 9a3 3 0 1 1 6 0"/><circle cx="12" cy="12" r="10"/><path d="m21 3-3 3"/><path d="M3 21l3-3"/></svg>`;
+const userSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 
 const certifications = [
   {
@@ -94,72 +95,75 @@ const awards = [
 const ProfileScreen = ({ navigation }) => {
     const [user, setUser] = useState(null);
     const [myCourses, setMyCourses] = useState([]);
-    const [nccStatus, setNCCStatus] = useState(null);
+    const [nccStatus, setNccStatus] = useState(null);
     const [loading, setLoading] = useState(false); // Start with false to show profile immediately
-
     const { user: authUser, signOut, updateUser } = useContext(AuthContext);
 
+    // Define safeGoToPrivacy if not exists
+    navigation.safeGoToPrivacy = navigation.safeGoToPrivacy || ((screen) => navigation.navigate(screen));
+
    useEffect(() => {
-     console.log('[ProfileScreen] useEffect triggered, authUser:', authUser);
-     // Set user immediately from context to reduce loading time
-     if (authUser) {
-       console.log('[ProfileScreen] Setting user from auth context:', authUser);
-       setUser(authUser);
-     } else {
-       console.log('[ProfileScreen] No authUser in context');
-     }
+      console.log('[ProfileScreen] useEffect triggered, authUser:', authUser);
+      // Set user immediately from context to reduce loading time
+      if (authUser) {
+        console.log('[ProfileScreen] Setting user from auth context:', authUser);
+        setUser(authUser);
+      } else {
+        console.log('[ProfileScreen] No authUser in context');
+      }
 
-     // Fetch additional data in background
-     const fetchAdditionalData = async () => {
-       try {
-         console.log('[ProfileScreen] Starting fetchAdditionalData');
-         const [coursesSettled, nccSettled, profileSettled] = await Promise.allSettled([
-           api.get('/courses/my/courses', { timeout: 6000 }).catch(() => ({ data: [] })),
-           api.get('/ncc', { timeout: 6000 }).catch(() => ({ data: null })),
-           api.get('/profile', { timeout: 6000 })
-         ]);
+      // Fetch additional data in background only if user is available
+      const fetchAdditionalData = async () => {
+        if (!authUser) return;
+        try {
+          console.log('[ProfileScreen] Starting fetchAdditionalData');
+          const [coursesSettled, nccSettled, profileSettled] = await Promise.allSettled([
+            api.get('/courses/my/courses', { timeout: 6000 }).catch(() => ({ data: [] })),
+            api.get('/ncc', { timeout: 6000 }).catch(() => ({ data: null })),
+            api.get('/profile', { timeout: 6000 })
+          ]);
 
-         console.log('[ProfileScreen] API calls settled:', {
-           courses: coursesSettled.status,
-           ncc: nccSettled.status,
-           profile: profileSettled.status
-         });
+          console.log('[ProfileScreen] API calls settled:', {
+            courses: coursesSettled.status,
+            ncc: nccSettled.status,
+            profile: profileSettled.status
+          });
 
-         if (coursesSettled.status === 'fulfilled') {
-           const list = (coursesSettled.value?.data?.courses || coursesSettled.value?.data || []);
-           setMyCourses(Array.isArray(list) ? list : []);
-         } else {
-           setMyCourses([]);
-         }
+          if (coursesSettled.status === 'fulfilled') {
+            const list = (coursesSettled.value?.data?.courses || coursesSettled.value?.data || []);
+            setMyCourses(Array.isArray(list) ? list : []);
+          } else {
+            setMyCourses([]);
+          }
 
-         if (nccSettled.status === 'fulfilled') {
-           setNCCStatus(nccSettled.value?.data || null);
-         } else {
-           setNCCStatus(null);
-         }
+          if (nccSettled.status === 'fulfilled') {
+            setNccStatus(nccSettled.value?.data || null);
+          } else {
+            setNccStatus(null);
+          }
 
-         if (profileSettled.status === 'fulfilled') {
-           console.log('[ProfileScreen] Profile API success:', profileSettled.value?.data);
-           const profileData = profileSettled.value?.data?.profile || authUser;
-           setUser(profileData);
-           // Update auth context if profile data changed
-           if (profileData && JSON.stringify(profileData) !== JSON.stringify(authUser)) {
-             updateUser(profileData);
-           }
-         } else {
-           console.log('[ProfileScreen] Profile API failed:', profileSettled.reason);
-           // Don't set user to null on API failure - keep the authUser if available
-           // This prevents showing login prompt when user is actually authenticated
-           console.log('[ProfileScreen] Keeping existing user data despite API failure');
-         }
-       } catch (error) {
-         console.error('[ProfileScreen] Profile error:', error);
-         setUser(authUser || null);
-       }
-     };
+          if (profileSettled.status === 'fulfilled') {
+            console.log('[ProfileScreen] Profile API success:', profileSettled.value?.data);
+            const profileData = profileSettled.value?.data?.profile || authUser;
+            setUser(profileData);
+            // Update auth context if profile data changed
+            if (profileData && JSON.stringify(profileData) !== JSON.stringify(authUser)) {
+              updateUser(profileData);
+            }
+          } else {
+            console.log('[ProfileScreen] Profile API failed:', profileSettled.reason);
+            // Don't set user to null on API failure - keep the authUser if available
+            // This prevents showing login prompt when user is actually authenticated
+            console.log('[ProfileScreen] Keeping existing user data despite API failure');
+          }
+        } catch (error) {
+          console.error('[ProfileScreen] Profile error:', error);
+          setUser(authUser || null);
+        }
+      };
 
-     fetchAdditionalData();
-   }, [authUser, updateUser]);
+      fetchAdditionalData();
+    }, [authUser, updateUser]);
 
   const handleLogout = async () => {
     Alert.alert(
@@ -180,18 +184,6 @@ const ProfileScreen = ({ navigation }) => {
     );
   };
 
-  // Safe navigation wrappers to avoid duplicate taps
-  const goTo = (route, params) => () => navigation.navigate(route, params);
-  const safeGoToProfileEdit = useSafePress(goTo('ProfileEdit'));
-  const safeGoToNotifications = useSafePress(goTo('Notifications'));
-  const safeGoToNotificationSettings = useSafePress(goTo('NotificationSettings'));
-  const safeGoToHelp = useSafePress(goTo('Help'));
-  const safeGoToPrivacy = useSafePress(goTo('PrivacyPolicy'));
-  // Catalog removed; direct users to MyLearning instead
-  const safeGoToMyLearning = useSafePress(goTo('MyLearning'));
-  const safeGoToCertifications = useSafePress(goTo('Certifications'));
-  const safeGoToOrderHistory = useSafePress(goTo('OrderHistory'));
-  const safeGoToReferral = useSafePress(goTo('Referral'));
 
 
   if (loading) {
@@ -215,7 +207,7 @@ const ProfileScreen = ({ navigation }) => {
              <SvgXml xml={chevronLeftSvg} width={20} height={20} color="#FFFFFF" />
            </TouchableOpacity>
            <Text style={styles.headerTitle}>Profile</Text>
-           <TouchableOpacity onPress={safeGoToProfileEdit} style={styles.editButton}>
+           <TouchableOpacity onPress={() => navigation.navigate('ProfileEdit')} style={styles.editButton}>
              <SvgXml xml={editSvg} width={16} height={16} color="#FFFFFF" />
              <Text style={styles.editButtonText}>Edit</Text>
            </TouchableOpacity>
@@ -244,9 +236,11 @@ const ProfileScreen = ({ navigation }) => {
              <View style={styles.contactRow}><SvgXml xml={mailSvg} width={16} height={16} color="#6B7280" style={styles.contactIconSvg} /><Text style={styles.contactText}>{user?.email || '—'}</Text></View>
              <View style={styles.contactRow}><SvgXml xml={phoneSvg} width={16} height={16} color="#6B7280" style={styles.contactIconSvg} /><Text style={styles.contactText}>{user?.phoneNumber || '—'}</Text></View>
              <View style={styles.contactRow}><SvgXml xml={mapPinSvg} width={16} height={16} color="#6B7280" style={styles.contactIconSvg} /><Text style={styles.contactText}>{user?.location || [user?.city, user?.state].filter(Boolean).join(', ') || '—'}</Text></View>
-           </View>
+                </View>
          </View>
       </LinearGradient>
+
+    
 
       {/* Stats - Modern Cards with Gradients */}
       <View style={styles.statsContainer}>
@@ -262,22 +256,23 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={[styles.statNumber, { color: '#EA580C' }]}>{user?.workshopsCount || 0}</Text>
           <Text style={styles.statLabel}>Workshops</Text>
         </LinearGradient>
+      
       </View>
 
       {/* Divider */}
       <View style={{ height: 8 }} />
 
       <View style={styles.card}>
-        <ActionItem iconSvg={receiptSvg} label="Order History" onPress={safeGoToOrderHistory} iconColor="#2563EB" />
-        <ActionItem iconSvg={awardSvg} label="Certifications & Awards" onPress={safeGoToCertifications} iconColor="#A855F7" />
-        <ActionItem iconSvg={share2Svg} label="Refer & Earn" onPress={safeGoToReferral} iconColor="#10B981" />
-        <ActionItem iconSvg={bellSvg} label="Notifications" onPress={safeGoToNotifications} iconColor="#F9A8D4" />
-        <ActionItem iconSvg={lockSvg} label="Privacy & Security" onPress={safeGoToPrivacy} iconColor="#F97316" />
+        <ActionItem iconSvg={receiptSvg} label="Order History" onPress={() => navigation.navigate('OrderHistory')} iconColor="#2563EB" />
+        <ActionItem iconSvg={awardSvg} label="Certifications & Awards" onPress={() => navigation.navigate('Certifications')} iconColor="#A855F7" />
+        <ActionItem iconSvg={share2Svg} label="Refer & Earn" onPress={() => navigation.navigate('Referral')} iconColor="#10B981" />
+        <ActionItem iconSvg={bellSvg} label="Notifications" onPress={() => navigation.navigate('Notifications')} iconColor="#F9A8D4" />
+        <ActionItem iconSvg={lockSvg} label="Privacy & Security" onPress={() => navigation.navigate('PrivacyPolicy')} iconColor="#F97316" />
       </View>
 
       <View style={styles.card}>
-        <ActionItem iconSvg={helpCircleSvg} label="Help & Support" onPress={safeGoToHelp} iconColor="#F97316" />
-        <ActionItem iconSvg={fileTextSvg} label="Terms & Conditions" onPress={safeGoToPrivacy} iconColor="#6B7280" />
+        <ActionItem iconSvg={helpCircleSvg} label="Help & Support" onPress={() => navigation.navigate('Help')} iconColor="#F97316" />
+        <ActionItem iconSvg={fileTextSvg} label="Terms & Conditions" onPress={() => navigation.navigate('PrivacyPolicy')} iconColor="#6B7280" />
       </View>
 
       <View style={styles.card}>
@@ -535,13 +530,16 @@ const styles = StyleSheet.create({
     borderWidth: 0,
   },
   coursesCard: {
-    flex: 0.4,
+    flex: 1,
   },
   sessionsCard: {
-    flex: 0.4,
+    flex: 1,
   },
   workshopsCard: {
-    flex: 0.5,
+    flex: 1,
+  },
+  certificationsCard: {
+    flex: 1,
   },
   statItem: {
     alignItems: 'center',
@@ -670,6 +668,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1e293b',
     fontWeight: '500',
+  },
+  profileIncompleteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#FED7AA',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  bannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 2,
+  },
+  bannerSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  bannerButton: {
+    backgroundColor: '#F97316',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginLeft: 8,
+  },
+  bannerButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
 

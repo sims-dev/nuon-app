@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,11 @@ import {
   Share,
   Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { mentorAPI } from '../api/mentorAPI';
 
 // SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -27,230 +29,77 @@ const heartSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
 const rupeeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12l4 6H2l4-6z"/><path d="M6 9v12l8-6V9"/><path d="M6 9H2"/><path d="M6 15H2"/></svg>`;
 const checkCircleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
 const calendarSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
+const alertCircleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
 
 const { width } = Dimensions.get('window');
 
 const MentorProfileScreen = ({ route, navigation }) => {
-  const { mentor } = route.params || {};
-  const [isFavorited, setIsFavorited] = useState(false);
-  const [activeTab, setActiveTab] = useState('about');
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showCompleteLaterModal, setShowCompleteLaterModal] = useState(false);
+   const { mentor } = route.params || {};
+   const [isFavorited, setIsFavorited] = useState(false);
+   const [activeTab, setActiveTab] = useState('about');
+   const [showProfileModal, setShowProfileModal] = useState(false);
+   const [showCompleteLaterModal, setShowCompleteLaterModal] = useState(false);
+   const [fetchedMentor, setFetchedMentor] = useState(null);
+   const [loading, setLoading] = useState(true);
+   const [profileComplete, setProfileComplete] = useState(true);
+   const [hasShownAlert, setHasShownAlert] = useState(false);
 
-  const availableMentors = [
-    {
-      id: 1,
-      name: 'Dr. Sunita Verma',
-      specialization: 'Critical Care',
-      experience: '15+ years',
-      rating: 4.9,
-      sessions: 340,
-      image: 'https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBudXJzZSUyMGhlYWx0aGNhcmV8ZW58MXx8fHwxNzYwMzQ1MzQ1fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      available: true,
-      price: 1999,
-      responseTime: '2 hours',
-      languages: ['English', 'Hindi', 'Marathi'],
-      qualifications: [
-        'MSc Nursing - Critical Care',
-        'BSc Nursing - Delhi University',
-        'ICU Certification - AIIMS',
-      ],
-      expertise: [
-        'Critical Care Management',
-        'Emergency Response',
-        'Ventilator Management',
-        'Patient Safety Protocols',
-        'Clinical Leadership',
-      ],
-      bio: 'With over 15 years of experience in critical care nursing, I have worked in top hospitals across India including AIIMS and Apollo. I specialize in helping nurses advance their careers in emergency and critical care settings.',
-      reviews: [
-        {
-          id: 1,
-          name: 'Neha Sharma',
-          rating: 5,
-          date: 'Oct 2024',
-          comment: 'Dr. Verma provided excellent guidance on my ICU rotation. Her practical tips helped me gain confidence.',
-          image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
-        },
-      ],
-      achievements: [
-        { icon: 'award', label: 'Top Rated Mentor' },
-        { icon: 'users', label: '340+ Sessions' },
-        { icon: 'star', label: '4.9 Rating' },
-        { icon: 'clock', label: 'Quick Response' },
-      ],
-      availability: [
-        'Monday - Friday: 3:00 PM - 8:00 PM',
-        'Saturday: 10:00 AM - 6:00 PM',
-        'Sunday: By appointment',
-      ],
-    },
-    {
-      id: 2,
-      name: 'Dr. Rajesh Kumar',
-      specialization: 'Emergency Medicine',
-      experience: '12+ years',
-      rating: 4.8,
-      sessions: 280,
-      image: 'https://images.unsplash.com/photo-1747833305853-d43937d88971?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtZW50b3JzaGlwJTIwcHJvZmVzc2lvbmFsfGVufDF8fHx8MTc2MDM0NTM0Nnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      available: true,
-      price: 1799,
-      responseTime: '3 hours',
-      languages: ['English', 'Hindi', 'Tamil'],
-      qualifications: [
-        'MSc Emergency Medicine',
-        'Trauma Care Certification',
-        'Advanced Cardiac Life Support',
-      ],
-      expertise: [
-        'Emergency Triage',
-        'Trauma Management',
-        'Critical Decision Making',
-        'Disaster Response',
-      ],
-      bio: 'Emergency medicine specialist with 12+ years of experience in high-pressure healthcare environments. I focus on helping nurses build confidence and expertise in emergency situations.',
-      reviews: [
-        {
-          id: 1,
-          name: 'Amit Patel',
-          rating: 5,
-          date: 'Sep 2024',
-          comment: 'Very knowledgeable and patient. Answered all my questions thoroughly.',
-          image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100',
-        },
-      ],
-      achievements: [
-        { icon: 'award', label: 'Expert Mentor' },
-        { icon: 'users', label: '280+ Sessions' },
-        { icon: 'star', label: '4.8 Rating' },
-        { icon: 'clock', label: 'Responsive' },
-      ],
-      availability: [
-        'Tuesday - Saturday: 4:00 PM - 9:00 PM',
-        'Sunday: 11:00 AM - 5:00 PM',
-      ],
-    },
-    {
-      id: 3,
-      name: 'Nurse Kavita Sharma',
-      specialization: 'Pediatric Care',
-      experience: '10+ years',
-      rating: 4.9,
-      sessions: 420,
-      image: 'https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBudXJzZSUyMGhlYWx0aGNhcmV8ZW58MXx8fHwxNzYwMzQ1MzQ1fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      available: false,
-      price: 1899,
-      responseTime: '1 hour',
-      languages: ['English', 'Hindi', 'Punjabi'],
-      qualifications: [
-        'MSc Pediatric Nursing',
-        'NICU Specialization',
-        'Child Psychology Certification',
-      ],
-      expertise: [
-        'Pediatric Assessment',
-        'Neonatal Care',
-        'Family-Centered Care',
-        'Child Development',
-      ],
-      bio: 'Passionate about pediatric nursing with extensive NICU and pediatric ward experience. I mentor nurses who want to specialize in caring for children and families.',
-      reviews: [
-        {
-          id: 1,
-          name: 'Priya Reddy',
-          rating: 5,
-          date: 'Sep 2024',
-          comment: 'Amazing mentor! Her pediatric insights were invaluable.',
-          image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100',
-        },
-      ],
-      achievements: [
-        { icon: 'award', label: 'Top Mentor' },
-        { icon: 'users', label: '420+ Sessions' },
-        { icon: 'star', label: '4.9 Rating' },
-        { icon: 'clock', label: 'Very Fast' },
-      ],
-      availability: [
-        'Monday - Friday: 2:00 PM - 7:00 PM',
-        'Saturday: 9:00 AM - 1:00 PM',
-      ],
-    },
-  ];
+  useEffect(() => {
+    const fetchMentor = async () => {
+      try {
+        const data = await mentorAPI.getMentorById(mentor.id);
+        setFetchedMentor(data.mentor);
+      } catch (error) {
+        console.error('Error fetching mentor:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (mentor) {
+      fetchMentor();
+    }
+  }, [mentor]);
 
-  if (!mentor) {
+  if (!mentor || loading || !fetchedMentor) {
     return (
       <View style={styles.center}>
-        <Text style={{ color: '#fff' }}>Mentor not found.</Text>
+        <Text style={{ color: '#fff' }}>{!mentor ? 'Mentor not found.' : 'Loading...'}</Text>
       </View>
     );
   }
 
-  // Default mentor data with comprehensive information
-  const defaultMentor = {
-    id: 1,
-    name: 'Dr. Sunita Verma',
-    specialization: 'Critical Care',
-    experience: '15+ years',
-    rating: 4.9,
-    sessions: 340,
-    image: 'https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBudXJzZSUyMGhlYWx0aGNhcmV8ZW58MXx8fHwxNzYwMzQ1MzQ1fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-    available: true,
-    price: 1999,
-    responseTime: '2 hours',
-    languages: ['English', 'Hindi', 'Marathi'],
-    qualifications: [
-      'MSc Nursing - Critical Care',
-      'BSc Nursing - Delhi University',
-      'ICU Certification - AIIMS',
-    ],
-    expertise: [
-      'Critical Care Management',
-      'Emergency Response',
-      'Ventilator Management',
-      'Patient Safety Protocols',
-      'Clinical Leadership',
-    ],
-    bio: 'With over 15 years of experience in critical care nursing, I have worked in top hospitals across India including AIIMS and Apollo. I specialize in helping nurses advance their careers in emergency and critical care settings. My mentorship focuses on practical skills, clinical decision-making, and professional growth.',
-    reviews: [
-      {
-        id: 1,
-        name: 'Neha Sharma',
-        rating: 5,
-        date: 'Oct 2024',
-        comment: 'Dr. Verma provided excellent guidance on my ICU rotation. Her practical tips and real-world scenarios helped me gain confidence.',
-        image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
-      },
-      {
-        id: 2,
-        name: 'Amit Patel',
-        rating: 5,
-        date: 'Sep 2024',
-        comment: 'Very knowledgeable and patient. She answered all my questions about critical care protocols thoroughly.',
-        image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100',
-      },
-      {
-        id: 3,
-        name: 'Priya Reddy',
-        rating: 4,
-        date: 'Sep 2024',
-        comment: 'Great session on ventilator management. Would definitely book again!',
-        image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100',
-      },
-    ],
+  // Construct mentor data from real API data
+  const mentorData = {
+    id: fetchedMentor.id,
+    name: fetchedMentor.name || 'Unknown Mentor',
+    specialization: fetchedMentor.specialization || 'General Nursing',
+    experience: `${fetchedMentor.experience || 0} years`,
+    rating: fetchedMentor.rating || 0,
+    sessions: fetchedMentor.totalSessions || 0,
+    image: fetchedMentor.profilePicture || 'https://via.placeholder.com/150',
+    available: mentor.available || false, // Use actual availability from mentor data
+    price: fetchedMentor.hourlyRate || 0,
+    responseTime: 'Within 24 hours', // Default
+    languages: ['English'], // Default
+    qualifications: fetchedMentor.qualification ? [fetchedMentor.qualification] : [],
+    expertise: [], // Not available in schema
+    bio: fetchedMentor.bio || 'Experienced nursing professional ready to mentor.',
+    reviews: [], // Not available in basic API
     achievements: [
-      { icon: 'award', label: 'Top Rated Mentor' },
-      { icon: 'users', label: '340+ Sessions' },
-      { icon: 'star', label: '4.9 Rating' },
-      { icon: 'clock', label: 'Quick Response' },
+      { icon: 'users', label: `${fetchedMentor.totalSessions || 0} Sessions` },
+      { icon: 'star', label: `${fetchedMentor.rating || 0} Rating` },
     ],
-    availability: [
-      'Monday - Friday: 3:00 PM - 8:00 PM',
-      'Saturday: 10:00 AM - 6:00 PM',
-      'Sunday: By appointment',
-    ],
+    availability: fetchedMentor.availability ? [fetchedMentor.availability] : ['By appointment'],
+    currentWorkplace: fetchedMentor.hospital || '',
+    city: fetchedMentor.city || '',
+    state: fetchedMentor.state || '',
+    registrationNumber: fetchedMentor.registrationNumber || '',
+    highestQualification: fetchedMentor.qualification || '',
+    organization: fetchedMentor.organization || '',
+    department: fetchedMentor.department || '',
+    hospital: fetchedMentor.hospital || '',
+    phoneNumber: fetchedMentor.phoneNumber || '',
   };
-
-  const mentorData = { ...defaultMentor, ...mentor };
 
   const handleShare = async () => {
     try {
@@ -265,14 +114,24 @@ const MentorProfileScreen = ({ route, navigation }) => {
   const handleBookSession = async (mentor) => {
     try {
       const profile = await AsyncStorage.getItem('nurseProfile');
-      if (!profile || !JSON.parse(profile).fullName || !JSON.parse(profile).email) {
+      const profileData = profile ? JSON.parse(profile) : null;
+
+      // Check if profile is incomplete
+      if (!profileData ||
+          !profileData.fullName ||
+          !profileData.email ||
+          !profileData.workplace ||
+          !profileData.registrationNumber ||
+          !profileData.qualification) {
         setShowProfileModal(true);
         return;
       }
-      // Show complete later modal
-      setShowCompleteLaterModal(true);
+
+      // Profile is complete, go directly to booking
+      navigation.navigate('BookingSlots', { mentor });
     } catch (error) {
       console.error('Error checking profile:', error);
+      setShowProfileModal(true); // Show modal on error
     }
   };
 
@@ -281,45 +140,120 @@ const MentorProfileScreen = ({ route, navigation }) => {
       case 'about':
         return (
           <View style={styles.tabContent}>
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <SvgXml xml={usersSvg} width={20} height={20} color="#7c3aed" />
-                <Text style={styles.sectionTitle}>About</Text>
-              </View>
-              <Text style={styles.bioText}>{mentorData.bio}</Text>
-            </View>
-
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <SvgXml xml={awardSvg} width={20} height={20} color="#7c3aed" />
-                <Text style={styles.sectionTitle}>Qualifications</Text>
-              </View>
-              {mentorData.qualifications.map((qual, index) => (
-                <View key={index} style={styles.qualification}>
-                  <SvgXml xml={checkCircleSvg} width={20} height={20} color="#10b981" />
-                  <Text style={styles.qualificationText}>{qual}</Text>
+            <View style={styles.card}>
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <SvgXml xml={usersSvg} width={20} height={20} color="#7c3aed" />
+                  <Text style={styles.sectionTitle}>About</Text>
                 </View>
-              ))}
-            </View>
-
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <SvgXml xml={clockSvg} width={20} height={20} color="#7c3aed" />
-                <Text style={styles.sectionTitle}>Availability</Text>
+                <Text style={styles.bioText}>{mentorData.bio}</Text>
               </View>
-              {mentorData.availability.map((time, index) => (
-                <Text key={index} style={styles.availabilityText}>{time}</Text>
-              ))}
             </View>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Languages</Text>
-              <View style={styles.languagesContainer}>
-                {mentorData.languages.map((lang, index) => (
-                  <View key={index} style={styles.languageBadge}>
-                    <Text style={styles.languageText}>{lang}</Text>
-                  </View>
+            <View style={styles.card}>
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <SvgXml xml={awardSvg} width={20} height={20} color="#7c3aed" />
+                  <Text style={styles.sectionTitle}>Qualifications</Text>
+                </View>
+                {mentorData.qualifications.length > 0 && (
+                  <>
+                    {mentorData.qualifications.map((qual, index) => (
+                      <View key={index} style={styles.qualification}>
+                        <SvgXml xml={checkCircleSvg} width={20} height={20} color="#10b981" />
+                        <Text style={styles.qualificationText}>{qual}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.card}>
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <SvgXml xml={clockSvg} width={20} height={20} color="#7c3aed" />
+                  <Text style={styles.sectionTitle}>Availability</Text>
+                </View>
+                {mentorData.availability.map((time, index) => (
+                  <Text key={index} style={styles.availabilityText}>{time}</Text>
                 ))}
+              </View>
+            </View>
+
+            <View style={styles.card}>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Languages</Text>
+                <View style={styles.languagesContainer}>
+                  {mentorData.languages.map((lang, index) => (
+                    <View key={index} style={styles.languageBadge}>
+                      <Text style={styles.languageText}>{lang}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.card}>
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <SvgXml xml={rupeeSvg} width={20} height={20} color="#7c3aed" />
+                  <Text style={styles.sectionTitle}>Professional Details</Text>
+                </View>
+                {mentorData.currentWorkplace && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Current Workplace:</Text>
+                    <Text style={styles.detailValue}>{mentorData.currentWorkplace}</Text>
+                  </View>
+                )}
+                {mentorData.organization && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Organization:</Text>
+                    <Text style={styles.detailValue}>{mentorData.organization}</Text>
+                  </View>
+                )}
+                {mentorData.hospital && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Hospital:</Text>
+                    <Text style={styles.detailValue}>{mentorData.hospital}</Text>
+                  </View>
+                )}
+                {mentorData.department && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Department:</Text>
+                    <Text style={styles.detailValue}>{mentorData.department}</Text>
+                  </View>
+                )}
+                {mentorData.city && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>City:</Text>
+                    <Text style={styles.detailValue}>{mentorData.city}</Text>
+                  </View>
+                )}
+                {mentorData.state && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>State:</Text>
+                    <Text style={styles.detailValue}>{mentorData.state}</Text>
+                  </View>
+                )}
+                {mentorData.registrationNumber && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Registration Number:</Text>
+                    <Text style={styles.detailValue}>{mentorData.registrationNumber}</Text>
+                  </View>
+                )}
+                {mentorData.highestQualification && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Highest Qualification:</Text>
+                    <Text style={styles.detailValue}>{mentorData.highestQualification}</Text>
+                  </View>
+                )}
+                {mentorData.phoneNumber && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Phone Number:</Text>
+                    <Text style={styles.detailValue}>{mentorData.phoneNumber}</Text>
+                  </View>
+                )}
               </View>
             </View>
           </View>
@@ -356,19 +290,41 @@ const MentorProfileScreen = ({ route, navigation }) => {
       case 'reviews':
         return (
           <View style={styles.tabContent}>
-            <View style={styles.ratingSummary}>
+            {/* Overall Rating Summary Card */}
+            <View style={styles.ratingSummaryCard}>
               <View style={styles.ratingOverview}>
-                <Text style={styles.overallRating}>{mentorData.rating} ({mentorData.reviews.length} reviews)</Text>
-                <View style={styles.starsContainer}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <SvgXml key={star} xml={starSvg} width={16} height={16} color="#F59E0B" fill="#F59E0B" />
+                <View style={styles.leftRating}>
+                  <Text style={styles.overallRating}>{mentorData.rating}</Text>
+                  <View style={styles.starsContainer}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <SvgXml key={star} xml={starSvg} width={20} height={20} color="#F59E0B" fill="#F59E0B" />
+                    ))}
+                  </View>
+                  <View style={styles.iconContainer}>
+                    <SvgXml xml={calendarSvg} width={20} height={20} color="#7c3aed" />
+                    <SvgXml xml={calendarSvg} width={20} height={20} color="#7c3aed" />
+                  </View>
+                  <Text style={styles.totalSessions}>{mentorData.sessions} sessions</Text>
+                </View>
+                <View style={styles.rightRating}>
+                  <Text style={styles.ratingBreakdownTitle}>Rating Breakdown</Text>
+                  {[5, 4, 3, 2, 1].map((rating) => (
+                    <View key={rating} style={styles.ratingBar}>
+                      <Text style={styles.ratingLabel}>{rating}★</Text>
+                      <View style={styles.barContainer}>
+                        <View style={[styles.barFill, {
+                          width: `${rating === 5 ? 80 : rating === 4 ? 15 : rating === 3 ? 3 : rating === 2 ? 1 : 0}%`,
+                          backgroundColor: rating >= 4 ? '#10b981' : rating >= 3 ? '#f59e0b' : '#ef4444'
+                        }]} />
+                      </View>
+                    </View>
                   ))}
                 </View>
-                <Text style={styles.totalSessions}>{mentorData.sessions} sessions</Text>
               </View>
             </View>
 
-            {mentorData.reviews.map((review) => (
+            {/* Individual Review Cards */}
+            {mentorData.reviews.map((review, index) => (
               <View key={review.id} style={styles.reviewCard}>
                 <View style={styles.reviewHeader}>
                   <View style={styles.reviewerInfo}>
@@ -379,16 +335,28 @@ const MentorProfileScreen = ({ route, navigation }) => {
                         <Text style={styles.reviewerInitial}>{review.name.charAt(0)}</Text>
                       </View>
                     )}
-                    <View>
-                      <Text style={styles.reviewerName}>{review.name}</Text>
-                      <Text style={styles.reviewDate}>{review.date}</Text>
+                    <View style={styles.reviewerDetails}>
+                      <View style={styles.nameDateRow}>
+                        <Text style={styles.reviewerName}>{review.name}</Text>
+                        <Text style={styles.reviewDateInline}>{review.date}</Text>
+                      </View>
+                      {index === 0 && (
+                        // First review (Neha Sharma) - stars below name and date
+                        <View style={styles.firstReviewStars}>
+                          {[...Array(review.rating)].map((_, i) => (
+                            <SvgXml key={i} xml={starSvg} width={12} height={12} color="#F59E0B" fill="#F59E0B" />
+                          ))}
+                        </View>
+                      )}
                     </View>
                   </View>
-                  <View style={styles.reviewStars}>
-                    {[...Array(review.rating)].map((_, i) => (
-                      <SvgXml key={i} xml={starSvg} width={14} height={14} color="#F59E0B" fill="#F59E0B" />
-                    ))}
-                  </View>
+                  {index !== 0 && (
+                    <View style={styles.reviewStars}>
+                      {[...Array(review.rating)].map((_, i) => (
+                        <SvgXml key={i} xml={starSvg} width={14} height={14} color="#F59E0B" fill="#F59E0B" />
+                      ))}
+                    </View>
+                  )}
                 </View>
                 <Text style={styles.reviewComment}>{review.comment}</Text>
               </View>
@@ -402,32 +370,7 @@ const MentorProfileScreen = ({ route, navigation }) => {
 
   return (
     <LinearGradient colors={['#faf5ff', '#fdf2f8', '#fff']} style={styles.container}>
-      <View style={styles.bottomBar}>
-        <View style={styles.bottomContent}>
-          <View>
-            <Text style={styles.feeLabel}>Session Fee</Text>
-            <View style={styles.feeAmount}>
-              <Text style={styles.feeText}>₹{mentorData.price}</Text>
-            </View>
-          </View>
-          <LinearGradient
-            colors={['#7c3aed', '#ec4899', '#ea580c']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.bookNowBtn, !mentorData.available && styles.disabledBtn]}
-          >
-            <TouchableOpacity
-              style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}
-              onPress={() => mentorData.available && handleBookSession(mentorData)}
-              disabled={!mentorData.available}
-            >
-              <SvgXml xml={calendarSvg} width={16} height={16} color="white" />
-              <Text style={styles.bookNowText}>Book Now</Text>
-            </TouchableOpacity>
-          </LinearGradient>
-        </View>
-      </View>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.contentContainer, {paddingTop: 80}]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.contentContainer, {paddingTop: 0}]}>
       {/* Header */}
       <LinearGradient
         colors={['#7c3aed', '#ec4899', '#ea580c']}
@@ -443,7 +386,10 @@ const MentorProfileScreen = ({ route, navigation }) => {
             <SvgXml xml={chevronLeftSvg} width={24} height={24} color="white" />
           </TouchableOpacity>
           <View style={styles.headerActions}>
-            <TouchableOpacity onPress={handleShare} style={styles.actionBtn}>
+            <TouchableOpacity
+              onPress={handleShare}
+              style={styles.actionBtn}
+            >
               <SvgXml xml={shareSvg} width={20} height={20} color="white" />
             </TouchableOpacity>
             <TouchableOpacity
@@ -490,15 +436,19 @@ const MentorProfileScreen = ({ route, navigation }) => {
           </View>
 
           <View style={styles.achievements}>
-            {mentorData.achievements.map((achievement, index) => (
-              <View key={index} style={styles.achievementCard}>
-                {achievement.icon === 'award' && <SvgXml xml={awardSvg} width={20} height={20} color="#7c3aed" />}
-                {achievement.icon === 'users' && <SvgXml xml={usersSvg} width={20} height={20} color="#7c3aed" />}
-                {achievement.icon === 'star' && <SvgXml xml={starSvg} width={20} height={20} color="#7c3aed" />}
-                {achievement.icon === 'clock' && <SvgXml xml={clockSvg} width={20} height={20} color="#7c3aed" />}
-                <Text style={styles.achievementText}>{achievement.label}</Text>
-              </View>
-            ))}
+            <View style={styles.achievementIconContainer}>
+              <SvgXml xml={awardSvg} width={16} height={16} color="#7c3aed" />
+            </View>
+            <View style={styles.achievementIconContainer}>
+              <SvgXml xml={clockSvg} width={16} height={16} color="#7c3aed" />
+            </View>
+            <View style={styles.achievementIconContainer}>
+              <SvgXml xml={starSvg} width={16} height={16} color="#7c3aed" />
+            </View>
+
+            <View style={styles.achievementIconContainer}>
+              <SvgXml xml={usersSvg} width={16} height={16} color="#7c3aed" />
+            </View>
           </View>
 
           <View style={styles.quickStats}>
@@ -521,24 +471,27 @@ const MentorProfileScreen = ({ route, navigation }) => {
           <View style={styles.additionalInfo}>
             <View style={styles.bookSessionContainer}>
               <LinearGradient
-                colors={['#7c3aed', '#ec4899', '#ea580c']}
+                colors={mentorData.available ? ['#7c3aed', '#ec4899', '#ea580c'] : ['#9ca3af', '#6b7280']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
-                style={styles.bookSessionBtn}
+                style={[styles.bookSessionBtn, !mentorData.available && styles.disabledBtn]}
               >
                 <TouchableOpacity
-                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  onPress={() => handleBookSession(mentorData)}
+                  style={styles.bookSessionBtnInner}
+                  onPress={() => mentorData.available && handleBookSession(mentorData)}
+                  disabled={!mentorData.available}
                 >
-                  <SvgXml xml={calendarSvg} width={16} height={16} color="white" />
-                  <Text style={styles.bookSessionText}>Book Session</Text>
+                  <SvgXml xml={calendarSvg} width={20} height={20} color="#fff" />
+                  <Text style={styles.bookSessionText}>
+                    {mentorData.available ? 'Book Session' : 'Unavailable'}
+                  </Text>
                 </TouchableOpacity>
               </LinearGradient>
             </View>
             <View style={styles.sessionCard}>
               <SvgXml xml={videoSvg} width={20} height={20} color="#7c3aed" />
               <Text style={styles.sessionText}>45-minute video session</Text>
-              <Text style={styles.sessionPrice}>1999</Text>
+              <Text style={styles.sessionPrice}>₹{mentorData.price}</Text>
             </View>
           </View>
 
@@ -586,28 +539,58 @@ const MentorProfileScreen = ({ route, navigation }) => {
         onRequestClose={() => setShowProfileModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Complete Your Profile</Text>
-            <Text style={styles.modalMessage}>
-              To book a mentorship session, please complete your profile with your full name and email address.
+          <View style={styles.profileModalContent}>
+            {/* Alert Icon */}
+            <View style={styles.alertIconContainer}>
+              <SvgXml xml={alertCircleSvg} width={24} height={24} color="#EA580C" />
+            </View>
+
+            {/* Title */}
+            <Text style={styles.profileModalTitle}>Complete Your Profile</Text>
+
+            {/* Description */}
+            <Text style={styles.profileModalDescription}>
+              Please complete your professional information to book mentorship sessions.
+              This helps us provide you with the best experience.
             </Text>
-            <View style={styles.modalButtons}>
+
+            {/* Missing Information Box */}
+            <View style={styles.missingInfoBox}>
+              <Text style={styles.missingInfoLabel}>Missing information:</Text>
+              <View style={styles.bulletList}>
+                <Text style={styles.bulletItem}>• Current Workplace</Text>
+                <Text style={styles.bulletItem}>• Nursing Registration Number</Text>
+                <Text style={styles.bulletItem}>• Highest Qualification</Text>
+              </View>
+            </View>
+
+            {/* Complete Profile Button */}
+            <LinearGradient
+              colors={['#3b82f6', '#7c3aed']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.completeProfileBtn}
+            >
               <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setShowProfileModal(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.completeButton]}
+                style={styles.completeProfileBtnInner}
                 onPress={() => {
                   setShowProfileModal(false);
                   navigation.navigate('ProfileSetupScreen');
                 }}
               >
-                <Text style={styles.completeButtonText}>Complete Profile</Text>
+                <Text style={styles.completeProfileBtnText}>Complete Profile Now →</Text>
               </TouchableOpacity>
-            </View>
+            </LinearGradient>
+
+            {/* Maybe Later */}
+            <TouchableOpacity
+              onPress={() => {
+                setShowProfileModal(false);
+                navigation.navigate('BookingSlots', { mentor: mentorData, skipProfileCheck: true });
+              }}
+            >
+              <Text style={styles.maybeLaterText}>Maybe Later</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -636,7 +619,7 @@ const MentorProfileScreen = ({ route, navigation }) => {
                 style={[styles.modalButton, styles.completeButton]}
                 onPress={() => {
                   setShowCompleteLaterModal(false);
-                  navigation.navigate('BookingSlots', { mentor: mentorData });
+                  navigation.navigate('BookingSlots', { mentor: mentorData, skipProfileCheck: true });
                 }}
               >
                 <Text style={styles.completeButtonText}>Complete Later</Text>
@@ -645,8 +628,36 @@ const MentorProfileScreen = ({ route, navigation }) => {
           </View>
         </View>
       </Modal>
-    </ScrollView>
-  </LinearGradient>
+      </ScrollView>
+
+      <View style={styles.bottomBar}>
+        <View style={styles.bottomContent}>
+          <View>
+            <Text style={styles.feeLabel}>Session Fee</Text>
+            <View style={styles.feeAmount}>
+              <Text style={styles.feeText}>₹{mentorData.price}</Text>
+            </View>
+          </View>
+          <LinearGradient
+            colors={mentorData.available ? ['#7c3aed', '#ec4899', '#ea580c'] : ['#9ca3af', '#6b7280']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.bookNowBtn, !mentorData.available && styles.disabledBtn]}
+          >
+            <TouchableOpacity
+              style={styles.bookNowBtnInner}
+              onPress={() => mentorData.available && handleBookSession(mentorData)}
+              disabled={!mentorData.available}
+            >
+              <SvgXml xml={calendarSvg} width={20} height={20} color="#fff" />
+              <Text style={styles.bookNowText}>
+                {mentorData.available ? 'Book Now' : 'Unavailable'}
+              </Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      </View>
+    </LinearGradient>
   );
 };
 
@@ -657,7 +668,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
   header: {
     paddingTop: 20,
-    paddingBottom: 80,
+    paddingBottom: 40,
     paddingHorizontal: 24,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
@@ -687,7 +698,7 @@ const styles = StyleSheet.create({
   actionIcon: { fontSize: 18 },
   favorited: { color: '#FF6B6B' },
   headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
-  profileCardContainer: { paddingHorizontal: 20, marginTop: -80, marginBottom: 20 },
+  profileCardContainer: { paddingHorizontal: 20, marginTop: -20, marginBottom: 20 },
   profileCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -786,36 +797,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   achievementText: {
-    fontSize: 12,
+    fontSize: 9,
     color: '#6B7280',
-    marginLeft: 6,
-    textAlign: 'left',
-  },
-  section: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    textAlign: 'center',
+    fontWeight: '600',
+    lineHeight: 12,
+    numberOfLines: 2,
   },
   achievements: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 10,
-  },
-  achievement: {
-    alignItems: 'center',
-    flex: 1,
+    marginBottom: 30,
   },
   quickStats: {
     flexDirection: 'row',
     backgroundColor: '#f9fafb',
     borderRadius: 16,
-    padding: 16,
+    padding: 17,
     marginBottom: 24,
   },
   statItem: { flex: 1, alignItems: 'center' },
@@ -828,7 +826,7 @@ const styles = StyleSheet.create({
   findMoreButton: {
     borderRadius: 25,
     marginTop: 16,
-    marginBottom: 16,
+    marginBottom: 20,
     borderWidth: 2,
     borderColor: '#7c3aed',
     backgroundColor: 'transparent',
@@ -1018,10 +1016,13 @@ const styles = StyleSheet.create({
   expertiseText: { fontSize: 14, color: '#1F2937', flex: 1 },
   focusList: { marginTop: 8 },
   focusItem: { fontSize: 14, color: '#374151', marginBottom: 4, paddingLeft: 12 },
-  ratingSummary: {
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  detailLabel: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  detailValue: { fontSize: 14, color: '#1F2937', fontWeight: '600' },
+  ratingSummaryCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1029,11 +1030,69 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  ratingOverview: { alignItems: 'center' },
-  overallRating: { fontSize: 36, fontWeight: 'bold', color: '#7C3AED', marginBottom: 8 },
-  starsContainer: { flexDirection: 'row', marginBottom: 8 },
-  star: { fontSize: 16, color: '#F59E0B', marginHorizontal: 1 },
-  totalSessions: { fontSize: 14, color: '#6B7280' },
+  ratingOverview: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  leftRating: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  rightRating: {
+    flex: 1,
+    paddingLeft: 20,
+  },
+  overallRating: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#7C3AED',
+    marginBottom: 8
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    justifyContent: 'center'
+  },
+  totalSessions: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center'
+  },
+  iconContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 8,
+  },
+  ratingBreakdownTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  ratingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  ratingLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    width: 24,
+    textAlign: 'center',
+  },
+  barContainer: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 4,
+    marginLeft: 8,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
   reviewCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -1046,7 +1105,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  reviewerInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  reviewerInfo: { flexDirection: 'row', alignItems: 'flex-start', flex: 1 },
   reviewerImage: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },
   reviewerPlaceholder: {
     width: 40,
@@ -1058,8 +1117,13 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   reviewerInitial: { fontSize: 16, fontWeight: 'bold', color: '#6B7280' },
+  reviewerDetails: { flex: 1 },
+  nameDateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   reviewerName: { fontSize: 14, fontWeight: 'bold', color: '#1F2937' },
+  reviewDateInline: { fontSize: 12, color: '#6B7280', fontStyle: 'italic' },
   reviewDate: { fontSize: 12, color: '#6B7280' },
+  reviewDateAlt: { fontSize: 12, color: '#6B7280', fontStyle: 'italic' },
+  firstReviewStars: { flexDirection: 'row', marginTop: 2 },
   reviewStars: { flexDirection: 'row' },
   starFilled: { fontSize: 14, color: '#F59E0B' },
   reviewComment: { fontSize: 14, color: '#374151', lineHeight: 20 },
@@ -1109,22 +1173,35 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   bookNowBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 50,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    gap: 6,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 15,
     elevation: 3,
   },
+  bookNowBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
   bookNowText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: 14,
+  },
+  bookSessionBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  disabledBtn: {
+    opacity: 0.5,
   },
   modalOverlay: {
     flex: 1,
@@ -1182,6 +1259,82 @@ const styles = StyleSheet.create({
   completeButtonText: {
     color: 'white',
     fontWeight: '600',
+  },
+  profileModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    width: '85%',
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  alertIconContainer: {
+    alignSelf: 'center',
+    backgroundColor: '#FFE9D6',
+    padding: 12,
+    borderRadius: 50,
+    marginBottom: 16,
+  },
+  profileModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 16,
+    color: '#1f2937',
+  },
+  profileModalDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  missingInfoBox: {
+    backgroundColor: '#FFF4E6',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+  },
+  missingInfoLabel: {
+    fontWeight: '500',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  bulletList: {
+    gap: 4,
+  },
+  bulletItem: {
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 2,
+  },
+  completeProfileBtn: {
+    borderRadius: 30,
+    marginTop: 20,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  completeProfileBtnInner: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  completeProfileBtnText: {
+    color: '#FFFFFF',
+    textAlign: 'center',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  maybeLaterText: {
+    textAlign: 'center',
+    color: '#6B7280',
+    marginTop: 14,
+    fontSize: 14,
   },
 });
 

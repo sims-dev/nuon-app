@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { initializeSocket } from './lib/socket';
 import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { IP_ADDRESS } from './config/ipConfig';
 
 // Load environment variables FIRST, before anything else
 dotenv.config();
@@ -34,7 +35,10 @@ async function bootstrap(): Promise<void> {
         `http://192.168.0.116:3001`,
         `http://192.168.0.3:3000`,
         `http://192.168.0.3:5000`,
+        `http://192.168.0.4:3000`,
+        `http://192.168.0.4:5000`,
         `http://192.168.0.209:3000`,
+        `http://192.168.0.209:3001`,
         `http://192.168.0.209:5000`,
     ];
 
@@ -78,6 +82,7 @@ async function bootstrap(): Promise<void> {
 
     await app.listen(PORT, '0.0.0.0');
     console.log(`Server (with sockets) running on port ${PORT} and listening on 0.0.0.0`);
+    console.log(`Server accessible at: http://localhost:${PORT} and http://${IP_ADDRESS}:${PORT}`);
 
     // Ensure an admin user exists on startup
     const appService = app.get(AppService);

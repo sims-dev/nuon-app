@@ -139,6 +139,20 @@ export class MentorController {
         }
     }
 
+    @Get('mentor/profile')
+    @UseGuards(JwtAuthGuard)
+    async getProfile(@Req() req: AuthenticatedRequest): Promise<any> {
+        try {
+            const userId = BigInt(req.user!.id);
+            return await this.mentorService.getProfile(userId);
+        } catch (error) {
+            throw new HttpException(
+                { message: (error as Error).message },
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
     @Put('mentor/profile')
     @UseGuards(JwtAuthGuard)
     async updateProfile(@Req() req: AuthenticatedRequest, @Body() body: any): Promise<any> {
@@ -157,9 +171,11 @@ export class MentorController {
     @UseGuards(JwtAuthGuard)
     async createAvailabilitySlot(@Req() req: AuthenticatedRequest, @Body() body: any): Promise<any> {
         try {
+            console.log('Creating availability slot with body:', body);
             const userId = BigInt(req.user!.id);
             return await this.mentorService.createAvailabilitySlot(userId, body);
         } catch (error) {
+            console.error('Error creating availability slot:', error);
             throw new HttpException(
                 { message: (error as Error).message },
                 HttpStatus.INTERNAL_SERVER_ERROR
@@ -266,6 +282,76 @@ export class MentorController {
     async bookSlot(@Body() body: { slotId: string; userId: string }): Promise<any> {
         try {
             return await this.mentorService.bookSlot(BigInt(body.slotId), BigInt(body.userId));
+        } catch (error) {
+            throw new HttpException(
+                { message: (error as Error).message },
+                HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    @Post('booking/:id/accept')
+    @UseGuards(JwtAuthGuard)
+    async acceptBooking(@Req() req: AuthenticatedRequest, @Param('id') id: string): Promise<any> {
+        try {
+            const userId = BigInt(req.user!.id);
+            return await this.mentorService.acceptBooking(BigInt(id), userId);
+        } catch (error) {
+            throw new HttpException(
+                { message: (error as Error).message },
+                HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    @Post('booking/:id/reject')
+    @UseGuards(JwtAuthGuard)
+    async rejectBooking(@Req() req: AuthenticatedRequest, @Param('id') id: string): Promise<any> {
+        try {
+            const userId = BigInt(req.user!.id);
+            return await this.mentorService.rejectBooking(BigInt(id), userId);
+        } catch (error) {
+            throw new HttpException(
+                { message: (error as Error).message },
+                HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    @Post('booking/:id/start-session')
+    @UseGuards(JwtAuthGuard)
+    async startSession(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() body?: { meetingLink?: string }): Promise<any> {
+        try {
+            const userId = BigInt(req.user!.id);
+            return await this.mentorService.startSession(BigInt(id), userId, body?.meetingLink);
+        } catch (error) {
+            throw new HttpException(
+                { message: (error as Error).message },
+                HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    @Post('booking/:id/reschedule')
+    @UseGuards(JwtAuthGuard)
+    async rescheduleBooking(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() body: { newDateTime: string }): Promise<any> {
+        try {
+            const userId = BigInt(req.user!.id);
+            return await this.mentorService.rescheduleBooking(BigInt(id), userId, new Date(body.newDateTime));
+        } catch (error) {
+            throw new HttpException(
+                { message: (error as Error).message },
+                HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    @Post('booking/:id/join')
+    @UseGuards(JwtAuthGuard)
+    async joinSession(@Req() req: AuthenticatedRequest, @Param('id') id: string): Promise<any> {
+        try {
+            const userId = BigInt(req.user!.id);
+            return await this.mentorService.joinSession(BigInt(id), userId);
         } catch (error) {
             throw new HttpException(
                 { message: (error as Error).message },

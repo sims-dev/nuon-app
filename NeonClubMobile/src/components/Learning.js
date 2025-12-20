@@ -236,8 +236,33 @@ const Learning = ({ navigation }) => {
       });
     };
 
-    // Handle image URL construction
-    const imgUri = item.thumbnail ? (item.thumbnail.startsWith('/uploads') ? `http://${IP_ADDRESS}:5000${item.thumbnail}` : item.thumbnail) : item.image ? (item.image.startsWith('/uploads') ? `http://${IP_ADDRESS}:5000${item.image}` : item.image) : 'https://via.placeholder.com/300x160/cccccc/000000?text=No+Image';
+    // Handle image URL construction with fallback
+    const getImageUri = (item) => {
+      if (item.thumbnail) {
+        if (item.thumbnail.startsWith('/uploads')) {
+          return `http://${IP_ADDRESS}:5000${item.thumbnail}`;
+        } else if (item.thumbnail.startsWith('http')) {
+          return item.thumbnail;
+        }
+      }
+      if (item.image) {
+        if (item.image.startsWith('/uploads')) {
+          return `http://${IP_ADDRESS}:5000${item.image}`;
+        } else if (item.image.startsWith('http')) {
+          return item.image;
+        }
+      }
+      // Fallback to placeholder based on type
+      const colors = {
+        courses: '4F46E5',
+        events: 'EC4899',
+        workshops: '059669'
+      };
+      const color = colors[activeTab] || '6B7280';
+      return `https://via.placeholder.com/300x160/${color}/FFFFFF?text=${item.title?.substring(0, 10) || 'Content'}`;
+    };
+
+    const imgUri = getImageUri(item);
 
     return (
       <TouchableOpacity

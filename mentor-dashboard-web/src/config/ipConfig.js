@@ -1,5 +1,5 @@
 // Centralized configuration for IP address used by the mentor dashboard
-// For local web development set this to localhost so the dashboard talks to the backend on localhost
+// Set to localhost for development
 const IP_ADDRESS = 'localhost';
 
 export { IP_ADDRESS };

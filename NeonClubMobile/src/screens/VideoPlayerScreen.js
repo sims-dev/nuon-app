@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,12 +21,26 @@ const VideoPlayerScreen = ({ route, navigation }) => {
   const { videoUrl, title, courseId, lessonId } = route.params;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isDirectVideo, setIsDirectVideo] = useState(false);
   const webViewRef = useRef(null);
 
   // Helper to get full URL for uploads
   const BASE_URL = (CONFIG.API_BASE_URL || '').replace(/\/api\/?$/i, '') || `http://${IP_ADDRESS}:5000`;
   const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
+
+  // Process video URL to ensure it's a full URL
+  const processedVideoUrl = useMemo(() => {
+    if (!videoUrl) return null;
+    return getFullUrl(videoUrl);
+  }, [videoUrl]);
+
+  // Determine if this is a direct video file or embeddable video
+  const isDirectVideo = useMemo(() => {
+    if (!processedVideoUrl) return false;
+    // Check if it's a YouTube or Vimeo URL
+    const isYouTube = processedVideoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+    const isVimeo = processedVideoUrl.includes('vimeo.com');
+    return !isYouTube && !isVimeo;
+  }, [processedVideoUrl]);
 
   useEffect(() => {
     // Auto-mark lesson as started when video loads
@@ -64,13 +78,13 @@ const VideoPlayerScreen = ({ route, navigation }) => {
     }
   };
 
-  const getVideoPlayerHTML = () => {
+  const getVideoPlayerHTML = useMemo(() => {
+    if (isDirectVideo) return '';
 
-  // Extract video ID from YouTube URL
-  const videoId = videoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
+    // Extract video ID from YouTube URL
+    const videoId = processedVideoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
 
-  if (videoId) {
-      setIsDirectVideo(false);
+    if (videoId) {
       // YouTube embed
       return `
         <!DOCTYPE html>
@@ -101,8 +115,7 @@ const VideoPlayerScreen = ({ route, navigation }) => {
         </body>
         </html>
       `;
-    } else if (videoUrl.includes('vimeo.com')) {
-      setIsDirectVideo(false);
+    } else if (processedVideoUrl.includes('vimeo.com')) {
       // Vimeo embed
       const vimeoId = videoUrl.match(/vimeo\.com\/(\d+)/)?.[1];
       if (vimeoId) {
@@ -132,10 +145,8 @@ const VideoPlayerScreen = ({ route, navigation }) => {
       }
     }
 
-    // Direct video file
-    setIsDirectVideo(true);
     return '';
-  };
+  }, [processedVideoUrl, isDirectVideo]);
 
   const handleWebViewMessage = (event) => {
     const message = event.nativeEvent.data;
@@ -199,14 +210,19 @@ const VideoPlayerScreen = ({ route, navigation }) => {
             </View>
           )}
           <Video
-            source={{ uri: getFullUrl(videoUrl) }}
+            source={{ uri: processedVideoUrl }}
             style={styles.video}
             controls={true}
             resizeMode="contain"
             preload="metadata"
             onLoad={() => setLoading(false)}
-            onError={() => setError('Failed to load video')}
+            onError={(error) => {
+              console.error('Video load error:', error);
+              setError(`Failed to load video: ${error?.error?.localizedDescription || 'Unknown error'}`);
+            }}
             onEnd={handleVideoEnd}
+            onLoadStart={() => console.log('Video load started for:', processedVideoUrl)}
+            onBuffer={(buffer) => console.log('Video buffering:', buffer)}
           />
         </View>
       </View>

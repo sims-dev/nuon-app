@@ -28,7 +28,7 @@ const phoneSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
 
 const OTPAuthScreen = () => {
   const navigation = useNavigation();
-  const { updateUser, setToken } = useContext(AuthContext);
+  const { updateUser, setToken, setRefreshToken } = useContext(AuthContext);
   const [authMethod, setAuthMethod] = useState('phone'); // 'phone' or 'email'
   const [identifier, setIdentifier] = useState('');
   const [otp, setOtp] = useState('');
@@ -150,7 +150,7 @@ const OTPAuthScreen = () => {
         res = await api.post('/otp/verify', payload, { timeout: 5000, headers: otpSession ? { 'x-otp-session': otpSession } : undefined });
         if (__DEV__) console.log('Verified using backend');
       }
-  let { token, user, isNewUser } = res?.data || {};
+  let { token: accessToken, refreshToken, user, isNewUser } = res?.data || {};
       // Ensure phone number captured flows into profile
       if (authMethod === 'phone') {
         const digits = (identifier || '').replace(/\D/g, '');
@@ -159,10 +159,13 @@ const OTPAuthScreen = () => {
           user = { ...(user || {}), phoneNumber: user?.phoneNumber || phone };
         }
       }
-      if (token) {
-        await AsyncStorage.setItem('token', token);
+      if (accessToken || token) {
+        const finalToken = accessToken || token;
+        await AsyncStorage.setItem('token', finalToken);
+        await AsyncStorage.setItem('refreshToken', refreshToken);
         await AsyncStorage.setItem('user', JSON.stringify(user));
-        setToken(token);
+        setToken(finalToken);
+        setRefreshToken(refreshToken);
         updateUser(user);
         try { await registerPushTokenIfAvailable(); } catch {}
       }

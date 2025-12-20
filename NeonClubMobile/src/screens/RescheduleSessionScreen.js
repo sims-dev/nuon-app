@@ -1,59 +1,138 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  Modal,
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
+import socketService from '../services/socket';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
 const calendarSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
-const clockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+const checkCircleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+const checkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-const availableDates = [
-  { date: '2025-11-16', day: 'Sun', dateNum: '16', month: 'Nov' },
-  { date: '2025-11-17', day: 'Mon', dateNum: '17', month: 'Nov' },
-  { date: '2025-11-18', day: 'Tue', dateNum: '18', month: 'Nov' },
-];
-
-const timeSlots = {
-  '2025-11-16': [
-    { time: '2:00 PM - 2:45 PM', available: true },
-    { time: '3:00 PM - 3:45 PM', available: false },
-    { time: '5:00 PM - 5:45 PM', available: true },
-  ],
-  '2025-11-17': [
-    { time: '10:00 AM - 10:45 AM', available: true },
-    { time: '2:00 PM - 2:45 PM', available: true },
-    { time: '4:00 PM - 4:45 PM', available: true },
-  ],
-  '2025-11-18': [
-    { time: '11:00 AM - 11:45 AM', available: true },
-    { time: '3:00 PM - 3:45 PM', available: true },
-    { time: '6:00 PM - 6:45 PM', available: true },
-  ],
-};
-
-const RescheduleSessionScreen = ({ navigation, route }) => {
+const RescheduleSessionScreen = ({ route, navigation }) => {
+  const { session } = route.params;
   const [selectedDate, setSelectedDate] = useState(null);
-  const [selectedSlot, setSelectedSlot] = useState(null);
-  const session = route?.params?.session || {
-    mentor: 'Dr. Sunita Verma',
-    topic: 'Advanced Wound Care',
-    currentDate: 'Nov 16, 2025',
-    currentTime: '2:00 PM - 2:45 PM',
+  const [selectedTime, setSelectedTime] = useState(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  // Generate next 5 dates
+  const getNextDates = () => {
+    const dates = [];
+    const today = new Date();
+    for (let i = 0; i < 5; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      dates.push({
+        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        date: date.getDate(),
+        fullDate: date.toISOString().split('T')[0],
+        month: date.toLocaleDateString('en-US', { month: 'short' }),
+      });
+    }
+    return dates;
   };
 
-  const handleReschedule = () => {
-    if (selectedDate && selectedSlot) {
-      navigation.navigate('MentorshipScreen'); // Navigate back to mentors
+  const dates = getNextDates();
+
+  // Socket.IO initialization
+  useEffect(() => {
+    const initializeSocket = async () => {
+      try {
+        await socketService.connect();
+        console.log('Reschedule screen connected to socket');
+      } catch (error) {
+        console.error('Socket initialization failed:', error);
+      }
+    };
+
+    initializeSocket();
+
+    return () => {
+      // Cleanup will be handled by navigation
+    };
+  }, []);
+
+  // Time slots for selected date
+  const timeSlots = [
+    '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
+    '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM',
+    '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM'
+  ];
+
+  const handleConfirmReschedule = async () => {
+    if (!selectedDate || !selectedTime) {
+      Alert.alert('Selection Required', 'Please select both new date and time for your session.');
+      return;
+    }
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        Alert.alert('Error', 'Please login to continue');
+        return;
+      }
+
+      // Convert selected time to proper format
+      const [time, period] = selectedTime.split(' ');
+      const [hours, minutes] = time.split(':');
+      const hour24 = period === 'PM' && hours !== '12' ? parseInt(hours) + 12 : period === 'AM' && hours === '12' ? 0 : parseInt(hours);
+      const newDateTime = new Date(`${selectedDate}T${hour24.toString().padStart(2, '0')}:${minutes}:00`);
+
+      // Find available slot for the new date/time (this would need to be implemented properly)
+      // For now, we'll assume we have the slot ID from session data
+      const response = await fetch(`http://192.168.1.100:5000/api/booking/reschedule/${session.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          newDateTime: newDateTime.toISOString(),
+          // availabilityId would need to be determined based on selected date/time
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reschedule session');
+      }
+
+      const result = await response.json();
+
+      // Emit real-time notification
+      socketService.emit('booking_rescheduled', {
+        bookingId: session.id,
+        newDateTime: newDateTime.toISOString(),
+        mentorId: session.mentorId,
+        userId: session.userId
+      });
+
+      setShowSuccessModal(true);
+    } catch (error) {
+      console.error('Reschedule error:', error);
+      Alert.alert('Error', 'Failed to reschedule session. Please try again.');
     }
   };
 
+  const handleSuccessClose = () => {
+    setShowSuccessModal(false);
+    navigation.navigate('Mentorship', { activeTab: 'upcoming' });
+  };
+
   return (
-    <LinearGradient colors={['#fff7ed', '#fff']} style={styles.container}>
-      <ScrollView>
+    <LinearGradient colors={['#faf5ff', '#fdf2f8', '#fff']} style={styles.container}>
       {/* Header */}
       <LinearGradient
-        colors={['#ea580c', '#ec4899', '#7c3aed']}
+        colors={['#7c3aed', '#ec4899', '#ea580c']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.header}
@@ -63,130 +142,156 @@ const RescheduleSessionScreen = ({ navigation, route }) => {
             onPress={() => navigation.goBack()}
             style={styles.backBtn}
           >
-            <SvgXml xml={chevronLeftSvg} width={24} height={24} color="#00FFFF" />
+            <SvgXml xml={chevronLeftSvg} width={24} height={24} color="white" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Reschedule Session</Text>
-          <View style={{ width: 24 }} />
         </View>
       </LinearGradient>
 
-      <View style={styles.content}>
-        {/* Current Session Card */}
-        <LinearGradient colors={['#fff7ed', '#fef3c7']} style={styles.sessionCard}>
-          <View style={styles.sessionHeader}>
-            <SvgXml xml={calendarSvg} width={20} height={20} color="#ea580c" />
-            <Text style={styles.cardTitle}>Current Booking</Text>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Current Booking Warning */}
+        <View style={styles.warningCard}>
+          <Text style={styles.warningTitle}>Current Booking</Text>
+          <View style={styles.currentBooking}>
+            <Text style={styles.currentMentor}>{session.mentor}</Text>
+            <Text style={styles.currentTopic}>{session.topic}</Text>
+            <Text style={styles.currentDateTime}>{session.date} at {session.time}</Text>
           </View>
-          <Text style={styles.mentor}>{session.mentor}</Text>
-          <Text style={styles.topic}>{session.topic}</Text>
-          <View style={styles.currentTimeContainer}>
-            <Text style={styles.currentLabel}>Current:</Text>
-            <Text style={styles.currentTime}>{session.currentDate}, {session.currentTime}</Text>
-          </View>
-        </LinearGradient>
-
-        {/* Select New Date */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <SvgXml xml={calendarSvg} width={20} height={20} color="#7c3aed" />
-            <Text style={styles.sectionTitle}>Select New Date</Text>
-          </View>
-          <FlatList
-            data={availableDates}
-            horizontal
-            keyExtractor={(item) => item.date}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[styles.dateBtn, selectedDate === item.date && styles.selectedDateBtn]}
-                onPress={() => setSelectedDate(item.date)}
-              >
-                <Text style={[styles.dateDay, selectedDate === item.date && styles.selectedDateText]}>{item.day}</Text>
-                <Text style={[styles.dateNum, selectedDate === item.date && styles.selectedDateText]}>{item.dateNum}</Text>
-                <Text style={[styles.dateMonth, selectedDate === item.date && styles.selectedDateText]}>{item.month}</Text>
-              </TouchableOpacity>
-            )}
-            showsHorizontalScrollIndicator={false}
-            style={styles.dateList}
-          />
+          <Text style={styles.warningText}>
+            Note: No charges for rescheduling. You can reschedule up to 2 hours before the session.
+          </Text>
         </View>
 
-        {/* Select Time Slot */}
+        {/* Date Selector */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Select New Date</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.dateScroll}
+          >
+            {dates.map((date, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.dateCard,
+                  selectedDate === date.fullDate && styles.selectedDateCard
+                ]}
+                onPress={() => setSelectedDate(date.fullDate)}
+              >
+                <Text style={[
+                  styles.dateDay,
+                  selectedDate === date.fullDate && styles.selectedDateText
+                ]}>
+                  {date.day}
+                </Text>
+                <Text style={[
+                  styles.dateNumber,
+                  selectedDate === date.fullDate && styles.selectedDateText
+                ]}>
+                  {date.date}
+                </Text>
+                <Text style={[
+                  styles.dateMonth,
+                  selectedDate === date.fullDate && styles.selectedDateText
+                ]}>
+                  {date.month}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Time Slots */}
         {selectedDate && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <SvgXml xml={clockSvg} width={20} height={20} color="#7c3aed" />
-              <Text style={styles.sectionTitle}>Select Time Slot</Text>
-            </View>
-            <FlatList
-              data={timeSlots[selectedDate] || []}
-              keyExtractor={(item) => item.time}
-              renderItem={({ item }) => (
+            <Text style={styles.sectionTitle}>Select New Time</Text>
+            <View style={styles.timeGrid}>
+              {timeSlots.map((time, index) => (
                 <TouchableOpacity
+                  key={index}
                   style={[
-                    styles.slotBtn,
-                    selectedSlot === item.time && styles.selectedSlotBtn,
-                    !item.available && styles.disabledSlotBtn
+                    styles.timeSlot,
+                    selectedTime === time && styles.selectedTimeSlot
                   ]}
-                  onPress={() => item.available && setSelectedSlot(item.time)}
-                  disabled={!item.available}
+                  onPress={() => setSelectedTime(time)}
                 >
                   <Text style={[
-                    styles.slotText,
-                    selectedSlot === item.time && styles.selectedSlotText,
-                    !item.available && styles.disabledSlotText
+                    styles.timeText,
+                    selectedTime === time && styles.selectedTimeText
                   ]}>
-                    {item.time}
+                    {time}
                   </Text>
+                  {selectedTime === time && (
+                    <View style={styles.checkIcon}>
+                      <SvgXml xml={checkSvg} width={12} height={12} color="white" />
+                    </View>
+                  )}
                 </TouchableOpacity>
-              )}
-              showsVerticalScrollIndicator={false}
-              style={styles.slotList}
-            />
+              ))}
+            </View>
           </View>
         )}
 
         {/* New Schedule Summary */}
-        {selectedDate && selectedSlot && (
-          <LinearGradient colors={['#dcfce7', '#ecfdf5']} style={styles.newScheduleCard}>
-            <Text style={styles.newScheduleTitle}>New Schedule</Text>
-            <View style={styles.scheduleRow}>
-              <Text style={styles.scheduleLabel}>Date:</Text>
-              <Text style={styles.scheduleValue}>{new Date(selectedDate).toLocaleDateString()}</Text>
+        {(selectedDate && selectedTime) && (
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>New Schedule Summary</Text>
+            <View style={styles.newBooking}>
+              <Text style={styles.newMentor}>{session.mentor}</Text>
+              <Text style={styles.newTopic}>{session.topic}</Text>
+              <Text style={styles.newDateTime}>
+                {dates.find(d => d.fullDate === selectedDate)?.day} {dates.find(d => d.fullDate === selectedDate)?.date} {dates.find(d => d.fullDate === selectedDate)?.month} at {selectedTime}
+              </Text>
             </View>
-            <View style={styles.scheduleRow}>
-              <Text style={styles.scheduleLabel}>Time:</Text>
-              <Text style={styles.scheduleValue}>{selectedSlot}</Text>
-            </View>
-          </LinearGradient>
+          </View>
         )}
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-          <LinearGradient
-            colors={['#7c3aed', '#ec4899']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.confirmBtn}
-          >
-            <TouchableOpacity
-              style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-              onPress={handleReschedule}
-              disabled={!(selectedDate && selectedSlot)}
-            >
-              <Text style={styles.confirmText}>Confirm Reschedule</Text>
-            </TouchableOpacity>
-          </LinearGradient>
-        </View>
-
-        <Text style={styles.footerText}>Rescheduling is subject to mentor availability.</Text>
-      </View>
       </ScrollView>
+
+      {/* Bottom Button */}
+      <View style={styles.bottomBar}>
+        <LinearGradient
+          colors={['#7c3aed', '#ec4899', '#ea580c']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.confirmBtn}
+        >
+          <TouchableOpacity
+            style={styles.confirmBtnInner}
+            onPress={handleConfirmReschedule}
+            disabled={!selectedDate || !selectedTime}
+          >
+            <SvgXml xml={calendarSvg} width={20} height={20} color="white" />
+            <Text style={styles.confirmText}>Confirm Reschedule</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+      </View>
+
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleSuccessClose}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.successIcon}>
+              <SvgXml xml={checkCircleSvg} width={48} height={48} color="#10b981" />
+            </View>
+            <Text style={styles.modalTitle}>Session Rescheduled!</Text>
+            <Text style={styles.modalMessage}>
+              Your mentorship session has been successfully rescheduled to the new date and time.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={handleSuccessClose}
+            >
+              <Text style={styles.modalButtonText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 };
@@ -195,7 +300,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     paddingTop: 48,
-    paddingBottom: 32,
+    paddingBottom: 24,
     paddingHorizontal: 24,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
@@ -206,196 +311,254 @@ const styles = StyleSheet.create({
   },
   headerContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   backBtn: {
+    position: 'absolute',
+    left: 0,
     padding: 8,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#00FFFF',
-    textAlign: 'center',
+    color: 'white',
   },
-  content: { padding: 20 },
-  sessionCard: {
-    borderRadius: 8,
-    padding: 16,
-    marginHorizontal: 24,
-    marginBottom: 24,
-    borderWidth: 2,
-    borderColor: '#fed7aa',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 5,
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 24,
   },
-  sessionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#9a3412',
-    marginLeft: 8,
-  },
-  mentor: { fontSize: 18, fontWeight: 'bold', color: '#1f2937', marginBottom: 4 },
-  topic: { fontSize: 14, color: '#6b7280', marginBottom: 8 },
-  currentTimeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
+  warningCard: {
     backgroundColor: '#fef3c7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-  },
-  currentLabel: { fontSize: 14, color: '#9a3412', fontWeight: 'bold' },
-  currentTime: { fontSize: 14, color: '#9a3412', marginLeft: 8 },
-  section: { marginBottom: 24 },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1f2937' },
-  dateList: { marginBottom: 16 },
-  dateBtn: {
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 16,
-    marginRight: 12,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
-    minWidth: 80,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  selectedDateBtn: {
-    backgroundColor: '#faf5ff',
-    borderColor: '#7c3aed',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  dateDay: { fontSize: 12, color: '#6b7280' },
-  dateNum: { fontSize: 24, fontWeight: 'bold', color: '#111827' },
-  dateMonth: { fontSize: 12, color: '#6b7280' },
-  selectedDateText: { color: '#7c3aed' },
-  slotList: { marginBottom: 24 },
-  slotBtn: {
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  selectedSlotBtn: {
-    backgroundColor: '#faf5ff',
-    borderColor: '#7c3aed',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  disabledSlotBtn: {
-    backgroundColor: '#f9fafb',
-    borderColor: '#f3f4f6',
-    opacity: 0.5,
-  },
-  slotText: { fontSize: 14, color: '#111827', textAlign: 'center', fontWeight: '500' },
-  selectedSlotText: { color: '#7c3aed', fontWeight: '600' },
-  disabledSlotText: { color: '#9ca3af' },
-  newScheduleCard: {
-    marginHorizontal: 24,
+    borderRadius: 16,
+    padding: 20,
     marginBottom: 24,
-    borderRadius: 8,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: '#16a34a',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
   },
-  newScheduleTitle: {
+  warningTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#14532d',
+    color: '#92400e',
     marginBottom: 12,
   },
-  scheduleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+  currentBooking: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
   },
-  scheduleLabel: {
+  currentMentor: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  currentTopic: {
     fontSize: 14,
     color: '#6b7280',
+    marginBottom: 4,
   },
-  scheduleValue: {
+  currentDateTime: {
     fontSize: 14,
-    color: '#1f2937',
+    color: '#374151',
     fontWeight: '500',
   },
-  actionButtons: {
+  warningText: {
+    fontSize: 14,
+    color: '#92400e',
+    lineHeight: 20,
+  },
+  section: { marginBottom: 24 },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 16,
+  },
+  dateScroll: { marginBottom: 16 },
+  dateCard: {
+    width: 70,
+    height: 80,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  selectedDateCard: {
+    backgroundColor: '#7c3aed',
+    borderColor: '#7c3aed',
+  },
+  dateDay: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  dateNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 2,
+  },
+  dateMonth: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  selectedDateText: { color: 'white' },
+  timeGrid: {
     flexDirection: 'row',
-    marginHorizontal: 24,
-    marginBottom: 24,
+    flexWrap: 'wrap',
     gap: 12,
   },
-  cancelBtn: {
-    flex: 1,
-    borderRadius: 50,
-    height: 48,
-    backgroundColor: 'transparent',
+  timeSlot: {
+    width: '30%',
+    aspectRatio: 2.5,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#d1d5db',
+    borderColor: 'transparent',
+    position: 'relative',
+  },
+  selectedTimeSlot: {
+    backgroundColor: '#7c3aed',
+    borderColor: '#7c3aed',
+  },
+  timeText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  selectedTimeText: { color: 'white' },
+  checkIcon: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#10b981',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancelText: {
-    color: '#6b7280',
+  summaryCard: {
+    backgroundColor: '#d1fae5',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 100,
+    borderWidth: 1,
+    borderColor: '#10b981',
+  },
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#065f46',
+    marginBottom: 16,
+  },
+  newBooking: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+  },
+  newMentor: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  newTopic: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  newDateTime: {
+    fontSize: 14,
+    color: '#065f46',
+    fontWeight: '500',
+  },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
   },
   confirmBtn: {
-    flex: 1,
     borderRadius: 50,
-    height: 48,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 15,
     elevation: 3,
   },
-  confirmText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
-  footerText: {
-    fontSize: 12,
-    textAlign: 'center',
-    color: '#6b7280',
+  confirmBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  confirmText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
     marginHorizontal: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  successIcon: {
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
     marginBottom: 24,
+    lineHeight: 24,
+  },
+  modalButton: {
+    backgroundColor: '#7c3aed',
+    borderRadius: 50,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

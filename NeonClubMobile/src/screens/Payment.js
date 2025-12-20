@@ -1,611 +1,792 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Modal,
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { mentorAPI } from '../api/mentorAPI';
+import BookingPromptModal from '../components/BookingPromptModal';
+import { checkProfileCompletion } from '../utils/profileUtils';
 
 // SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
-const tagSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`;
 const creditCardSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`;
-const rupeeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12l4 6H2l4-6z"/><path d="M6 9v12l8-6V9"/><path d="M6 9H2"/><path d="M6 15H2"/></svg>`;
+const checkCircleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+const tagSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`;
+const checkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`;
+const alertCircleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+const xSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+const giftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="m12 7 5-5 5 5"/><path d="m12 7-5-5-5 5"/></svg>`;
 
 const Payment = ({ route, navigation }) => {
-  const { mentor, selectedDate, selectedSlot } = route.params || {};
+  const { mentor, bookingDetails } = route.params;
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
+  const [paymentComplete, setPaymentComplete] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('card');
-  const [cardDetails, setCardDetails] = useState({
-    number: '',
-    expiry: '',
-    cvv: '',
-    name: '',
-  });
-  const [upiId, setUpiId] = useState('');
+  const [couponError, setCouponError] = useState('');
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [missingFields, setMissingFields] = useState([]);
 
-  // Fallback data
-  const defaultMentor = { name: 'Dr. Sunita Verma', price: 1999 };
-  const defaultSelectedDate = 'Tomorrow';
-  const defaultSelectedSlot = '3:00 PM';
+  useEffect(() => {
+    const checkProfile = async () => {
+      const { isComplete, missingFields: fields } = await checkProfileCompletion();
+      if (!isComplete) {
+        setMissingFields(fields);
+        setShowProfilePrompt(true);
+      }
+    };
+    checkProfile();
+  }, []);
 
-  const mentorData = mentor || defaultMentor;
-  const date = selectedDate || defaultSelectedDate;
-  const slot = selectedSlot || defaultSelectedSlot;
+  // Valid coupons
+  const validCoupons = {
+    'PRIYA2024': 200,
+    'ANJALI2024': 200,
+    'RAHUL2024': 200,
+    'WELCOME100': 100,
+    'SAVE50': 50,
+    'FIRSTTIME': 150,
+  };
 
   const handleApplyCoupon = () => {
-    if (couponCode.toUpperCase() === 'NEON10') {
-      setAppliedCoupon({ code: 'NEON10', discount: 10 });
+    setCouponError('');
+    const code = couponCode.toUpperCase().trim();
+
+    if (!code) {
+      setCouponError('Please enter a coupon code');
+      return;
+    }
+
+    if (validCoupons[code]) {
+      setAppliedCoupon({
+        code: code,
+        discount: validCoupons[code]
+      });
+      setCouponCode('');
     } else {
-      Alert.alert('Invalid Coupon', 'Please enter a valid coupon code.');
+      setCouponError('Invalid coupon code');
     }
   };
 
-  const handlePayment = async () => {
-    try {
-      const token = await AsyncStorage.getItem('token');
-      if (!token) {
-        Alert.alert('Error', 'Please login to proceed with payment');
-        return;
-      }
-
-      // Mock booking and payment
-      const bookingData = {
-        availabilityId: selectedSlot?.id || 1,
-        notes: '',
-      };
-      const bookingResult = await mentorAPI.bookSession(bookingData, token);
-
-      Alert.alert('Success', 'Payment successful! Session booked.', [
-        { text: 'OK', onPress: () => navigation.navigate('MentorshipScreen') }
-      ]);
-    } catch (error) {
-      console.error('Payment error:', error);
-      Alert.alert('Error', 'Payment failed. Please try again.');
-    }
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponError('');
   };
 
-  const totalAmount = appliedCoupon
-    ? mentorData.price - (mentorData.price * appliedCoupon.discount / 100)
-    : mentorData.price;
+  const handlePayment = () => {
+    // Simulate payment processing
+    setTimeout(() => {
+      setPaymentComplete(true);
+    }, 1500);
+  };
+
+  if (paymentComplete) {
+    return (
+      <View style={styles.successContainer}>
+        <View style={styles.successCard}>
+          <View style={styles.successContent}>
+            <View style={styles.successIcon}>
+              <SvgXml xml={checkCircleSvg} width={48} height={48} color="#10B981" />
+            </View>
+            <Text style={styles.successTitle}>Payment Successful!</Text>
+            <Text style={styles.successMessage}>
+              You're all set for Mentorship Session with {mentor.name}
+            </Text>
+
+            <View style={styles.rewardCard}>
+              <View style={styles.rewardHeader}>
+                <SvgXml xml={giftSvg} width={20} height={20} color="#F59E0B" />
+                <Text style={styles.rewardLabel}>You earned</Text>
+              </View>
+              <Text style={styles.rewardPoints}>+200 points</Text>
+            </View>
+
+            {appliedCoupon && (
+              <View style={styles.couponSavingsCard}>
+                <Text style={styles.couponSavingsText}>
+                  💰 You saved ₹{appliedCoupon.discount} with code {appliedCoupon.code}!
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.actionButtons}>
+              <LinearGradient
+                colors={['#EC4899', '#8B5CF6']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryButton}
+              >
+                <TouchableOpacity style={styles.buttonInner} onPress={() => navigation.navigate('MyLearning')}>
+                  <Text style={styles.primaryButtonText}>Go to My Learning</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Dashboard')}>
+                <Text style={styles.secondaryButtonText}>Back to Dashboard</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <SvgXml xml={chevronLeftSvg} width={24} height={24} color="#6b7280" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Payment</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <LinearGradient
+        colors={['#EC4899', '#8B5CF6', '#F97316']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+          >
+            <SvgXml xml={chevronLeftSvg} width={24} height={24} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Payment</Text>
+        </View>
+      </LinearGradient>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Order Summary */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Order Summary</Text>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.itemTitle}>{mentorData.name}</Text>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>Mentorship Session</Text>
-              </View>
-            </View>
-            <View style={styles.summaryDetails}>
-              <Text style={styles.detailLabel}>Date:</Text>
-              <Text style={styles.detailValue}>{selectedDate}</Text>
-              <Text style={styles.detailLabel}>Time:</Text>
-              <Text style={styles.detailValue}>{selectedSlot}</Text>
-            </View>
+        {/* Order Summary Card */}
+        <View style={styles.orderSummaryCard}>
+          <Text style={styles.cardTitle}>Order Summary</Text>
+          <View style={styles.orderContent}>
+            <Text style={styles.sessionTitle}>Mentorship Session with {mentor.name}</Text>
+            <Text style={styles.sessionSubtitle}>
+              {bookingDetails.date} • {bookingDetails.time}
+            </Text>
+            <Text style={styles.sessionPrice}>₹{bookingDetails.price}</Text>
           </View>
         </View>
 
-        {/* Coupon Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <SvgXml xml={tagSvg} width={20} height={20} color="#7c3aed" />
-            <Text style={styles.sectionTitle}>Have a Coupon?</Text>
+        {/* Apply Coupon Card */}
+        <View style={styles.couponCard}>
+          <View style={styles.cardHeader}>
+            <SvgXml xml={tagSvg} width={20} height={20} color="#8B5CF6" />
+            <Text style={styles.cardTitle}>Apply Coupon Code</Text>
           </View>
           {!appliedCoupon ? (
-            <View style={styles.couponCard}>
-              <TextInput
-                placeholder="Enter coupon code"
-                placeholderTextColor="#9ca3af"
-                style={styles.couponInput}
-                value={couponCode}
-                onChangeText={setCouponCode}
-                autoCapitalize="characters"
-              />
-              <TouchableOpacity style={styles.applyButton} onPress={handleApplyCoupon}>
-                <Text style={styles.applyButtonText}>Apply</Text>
-              </TouchableOpacity>
+            <View style={styles.couponContent}>
+              <View style={styles.couponInputRow}>
+                <TextInput
+                  style={styles.couponInput}
+                  placeholder="Enter coupon or referral code"
+                  value={couponCode}
+                  onChangeText={(text) => {
+                    setCouponCode(text.toUpperCase());
+                    setCouponError('');
+                  }}
+                  autoCapitalize="characters"
+                />
+                <TouchableOpacity style={styles.applyButton} onPress={handleApplyCoupon}>
+                  <Text style={styles.applyButtonText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+              {couponError ? (
+                <View style={styles.errorContainer}>
+                  <SvgXml xml={alertCircleSvg} width={16} height={16} color="#DC2626" />
+                  <Text style={styles.errorText}>{couponError}</Text>
+                </View>
+              ) : null}
+              <View style={styles.couponHint}>
+                <Text style={styles.hintText}>
+                  💡 <Text style={styles.hintBold}>Have a referral code?</Text> Enter it here to get instant discount!
+                </Text>
+                <Text style={styles.hintSubtext}>Try: PRIYA2024, WELCOME100, SAVE50</Text>
+              </View>
             </View>
           ) : (
-            <LinearGradient colors={['#dcfce7', '#ecfdf5']} style={styles.appliedCouponCard}>
-              <View style={styles.appliedCouponContent}>
-                <Text style={styles.appliedCouponCode}>{appliedCoupon.code}</Text>
-                <Text style={styles.appliedCouponText}>Coupon applied successfully!</Text>
-                <Text style={styles.appliedCouponSavings}>You saved ₹{mentorData.price * appliedCoupon.discount / 100}</Text>
+            <View style={styles.appliedCoupon}>
+              <View style={styles.appliedCouponHeader}>
+                <View style={styles.appliedCouponLeft}>
+                  <View style={styles.checkIcon}>
+                    <SvgXml xml={checkSvg} width={16} height={16} color="#FFFFFF" />
+                  </View>
+                  <View>
+                    <Text style={styles.appliedCouponCode}>{appliedCoupon.code}</Text>
+                    <Text style={styles.appliedCouponText}>Coupon applied successfully!</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={handleRemoveCoupon}>
+                  <SvgXml xml={xSvg} width={16} height={16} color="#DC2626" />
+                </TouchableOpacity>
               </View>
-            </LinearGradient>
+              <View style={styles.savingsRow}>
+                <Text style={styles.savingsLabel}>You're saving</Text>
+                <Text style={styles.savingsAmount}>₹{appliedCoupon.discount}</Text>
+              </View>
+            </View>
           )}
         </View>
 
-        {/* Payment Methods */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Payment Method</Text>
+        {/* Payment Method Card */}
+        <View style={styles.paymentMethodCard}>
+          <Text style={styles.cardTitle}>Payment Method</Text>
           <View style={styles.paymentMethods}>
             <TouchableOpacity
-              style={[styles.paymentMethod, selectedPaymentMethod === 'card' && styles.selectedPaymentMethod]}
+              style={[
+                styles.paymentMethod,
+                selectedPaymentMethod === 'card' && styles.selectedPaymentMethod
+              ]}
               onPress={() => setSelectedPaymentMethod('card')}
             >
-              <SvgXml xml={creditCardSvg} width={20} height={20} color={selectedPaymentMethod === 'card' ? '#7c3aed' : '#6b7280'} />
-              <Text style={[styles.paymentMethodText, selectedPaymentMethod === 'card' && styles.selectedPaymentMethodText]}>
-                Credit/Debit Card
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.paymentMethod, selectedPaymentMethod === 'upi' && styles.selectedPaymentMethod]}
-              onPress={() => setSelectedPaymentMethod('upi')}
-            >
-              <Text style={[styles.paymentMethodText, selectedPaymentMethod === 'upi' && styles.selectedPaymentMethodText]}>
-                UPI
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Payment Forms */}
-        {selectedPaymentMethod === 'card' && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <SvgXml xml={creditCardSvg} width={20} height={20} color="#7c3aed" />
-              <Text style={styles.sectionTitle}>Card Details</Text>
-            </View>
-            <View style={styles.cardForm}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Card Number</Text>
-                <TextInput
-                  placeholder="1234 5678 9012 3456"
-                  placeholderTextColor="#9ca3af"
-                  style={styles.input}
-                  value={cardDetails.number}
-                  onChangeText={(text) => setCardDetails({ ...cardDetails, number: text })}
-                  keyboardType="numeric"
-                />
-              </View>
-              <View style={styles.row}>
-                <View style={[styles.inputGroup, { flex: 1, marginRight: 12 }]}>
-                  <Text style={styles.inputLabel}>Expiry Date</Text>
-                  <TextInput
-                    placeholder="MM/YY"
-                    placeholderTextColor="#9ca3af"
-                    style={styles.input}
-                    value={cardDetails.expiry}
-                    onChangeText={(text) => setCardDetails({ ...cardDetails, expiry: text })}
-                  />
-                </View>
-                <View style={[styles.inputGroup, { flex: 1 }]}>
-                  <Text style={styles.inputLabel}>CVV</Text>
-                  <TextInput
-                    placeholder="123"
-                    placeholderTextColor="#9ca3af"
-                    style={styles.input}
-                    value={cardDetails.cvv}
-                    onChangeText={(text) => setCardDetails({ ...cardDetails, cvv: text })}
-                    keyboardType="numeric"
-                    secureTextEntry
-                  />
-                </View>
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Cardholder Name</Text>
-                <TextInput
-                  placeholder="John Doe"
-                  placeholderTextColor="#9ca3af"
-                  style={styles.input}
-                  value={cardDetails.name}
-                  onChangeText={(text) => setCardDetails({ ...cardDetails, name: text })}
-                />
-              </View>
-            </View>
-          </View>
-        )}
-
-        {selectedPaymentMethod === 'upi' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>UPI Details</Text>
-            <View style={styles.upiForm}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>UPI ID</Text>
-                <TextInput
-                  placeholder="yourname@upi"
-                  placeholderTextColor="#9ca3af"
-                  style={styles.input}
-                  value={upiId}
-                  onChangeText={setUpiId}
-                />
-              </View>
-              <View style={styles.infoBox}>
-                <Text style={styles.infoText}>
-                  Enter your UPI ID (e.g., yourname@paytm, yourname@ybl). Make sure your UPI app is installed and linked.
+              <View style={styles.methodInfo}>
+                <SvgXml xml={creditCardSvg} width={24} height={24} color={selectedPaymentMethod === 'card' ? '#8B5CF6' : '#6B7280'} />
+                <Text style={[
+                  styles.methodName,
+                  selectedPaymentMethod === 'card' && styles.selectedMethodName
+                ]}>
+                  Credit Card
                 </Text>
               </View>
-            </View>
-          </View>
-        )}
-      </ScrollView>
+              {selectedPaymentMethod === 'card' && (
+                <View style={styles.checkMark}>
+                  <Text style={styles.checkText}>✓</Text>
+                </View>
+              )}
+            </TouchableOpacity>
 
-      {/* Fixed Bottom Bar */}
-      <View style={styles.bottomBar}>
-        <View style={styles.bottomPrice}>
-          <Text style={styles.bottomPriceLabel}>Total Amount</Text>
-          <View style={styles.bottomPriceAmount}>
-            <SvgXml xml={rupeeSvg} width={20} height={20} color="#7c3aed" />
-            <Text style={styles.bottomPriceValue}>{totalAmount}</Text>
+            <TouchableOpacity
+              style={[
+                styles.paymentMethod,
+                selectedPaymentMethod === 'upi' && styles.selectedPaymentMethod
+              ]}
+              onPress={() => setSelectedPaymentMethod('upi')}
+            >
+              <View style={styles.methodInfo}>
+                <SvgXml xml={creditCardSvg} width={24} height={24} color={selectedPaymentMethod === 'upi' ? '#8B5CF6' : '#6B7280'} />
+                <Text style={[
+                  styles.methodName,
+                  selectedPaymentMethod === 'upi' && styles.selectedMethodName
+                ]}>
+                  UPI
+                </Text>
+              </View>
+              {selectedPaymentMethod === 'upi' && (
+                <View style={styles.checkMark}>
+                  <Text style={styles.checkText}>✓</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.paymentMethod,
+                selectedPaymentMethod === 'netbanking' && styles.selectedPaymentMethod
+              ]}
+              onPress={() => setSelectedPaymentMethod('netbanking')}
+            >
+              <View style={styles.methodInfo}>
+                <SvgXml xml={creditCardSvg} width={24} height={24} color={selectedPaymentMethod === 'netbanking' ? '#8B5CF6' : '#6B7280'} />
+                <Text style={[
+                  styles.methodName,
+                  selectedPaymentMethod === 'netbanking' && styles.selectedMethodName
+                ]}>
+                  Net Banking
+                </Text>
+              </View>
+              {selectedPaymentMethod === 'netbanking' && (
+                <View style={styles.checkMark}>
+                  <Text style={styles.checkText}>✓</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
-        <TouchableOpacity style={styles.payNowButton} onPress={handlePayment}>
+      </ScrollView>
+
+      {/* Bottom Card (Amount and Pay Now Button) */}
+      <View style={styles.bottomCard}>
+        <View style={styles.bottomContent}>
+          <View style={styles.amountSection}>
+            <Text style={styles.totalLabel}>Total Amount</Text>
+            <Text style={styles.totalAmount}>₹{bookingDetails.price - (appliedCoupon?.discount || 0)}</Text>
+          </View>
           <LinearGradient
-            colors={['#10b981', '#059669']}
+            colors={['#EC4899', '#8B5CF6', '#F97316']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.payNowButtonGradient}
+            style={styles.payNowButton}
           >
-            <Text style={styles.payNowButtonText}>Pay Now</Text>
+            <TouchableOpacity style={styles.payNowButtonInner} onPress={handlePayment}>
+              <Text style={styles.payNowText}>Pay Now</Text>
+            </TouchableOpacity>
           </LinearGradient>
-        </TouchableOpacity>
+        </View>
       </View>
+
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: '#FDFBFF' },
+  successContainer: {
     flex: 1,
-    backgroundColor: '#f9fafb',
-  },
-  header: {
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#F9FAFB',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 16,
+  },
+  successCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  successContent: {
+    alignItems: 'center',
+  },
+  successIcon: {
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  successMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  rewardCard: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  rewardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  rewardLabel: {
+    fontSize: 14,
+    color: '#92400E',
+    marginLeft: 8,
+  },
+  rewardPoints: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#F59E0B',
+    textAlign: 'center',
+  },
+  couponSavingsCard: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  couponSavingsText: {
+    fontSize: 14,
+    color: '#065F46',
+    textAlign: 'center',
+  },
+  actionButtons: {
+    width: '100%',
+    gap: 12,
+  },
+  primaryButton: {
+    borderRadius: 25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  buttonInner: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 25,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  secondaryButtonText: {
+    color: '#374151',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  header: {
+    paddingTop: 48,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.1,
+    shadowRadius: 25,
+    elevation: 5,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backBtn: {
+    position: 'absolute',
+    left: 0,
     padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: 'white',
   },
   scrollView: {
     flex: 1,
     paddingHorizontal: 24,
+    paddingTop: 24,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-  },
-  summaryCard: {
-    backgroundColor: 'white',
+  orderSummaryCard: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
     elevation: 2,
   },
-  summaryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  itemTitle: {
-    fontSize: 16,
+  cardTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#1f2937',
-    flex: 1,
-  },
-  badge: {
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  badgeText: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  summaryDetails: {
+    color: '#111827',
     marginBottom: 16,
   },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  detailLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  detailValue: {
-    fontSize: 14,
-    color: '#1f2937',
-    fontWeight: '500',
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  orderContent: {
     alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    marginBottom: 8,
   },
-  priceLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  priceAmount: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  priceValue: {
+  sessionTitle: {
     fontSize: 16,
-    color: '#7c3aed',
-    fontWeight: 'bold',
-  },
-  couponApplied: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
     marginBottom: 8,
   },
-  couponCode: {
+  sessionSubtitle: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#14532d',
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 8,
   },
-  couponSavings: {
-    fontSize: 14,
-    color: '#16a34a',
-    fontWeight: '500',
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1f2937',
-  },
-  totalAmount: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  totalValue: {
+  sessionPrice: {
     fontSize: 20,
-    color: '#7c3aed',
     fontWeight: 'bold',
+    color: '#7C3AED',
   },
   couponCard: {
-    backgroundColor: 'white',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 16,
+  },
+  couponContent: {
+    // Styles for coupon content
+  },
+  couponInputRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
   },
   couponInput: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 16,
-    marginRight: 12,
   },
   applyButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#8B5CF6',
     borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    justifyContent: 'center',
   },
   applyButtonText: {
-    color: 'white',
-    fontSize: 14,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
-  appliedCouponCard: {
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  couponHint: {
+    backgroundColor: '#F5F3FF',
+    borderRadius: 8,
+    padding: 12,
+  },
+  hintText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  hintBold: {
+    fontWeight: '600',
+  },
+  hintSubtext: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  appliedCoupon: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 2,
+    borderColor: '#16A34A',
     borderRadius: 12,
     padding: 16,
-    borderWidth: 2,
-    borderColor: '#16a34a',
   },
-  appliedCouponContent: {
+  appliedCouponHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
+  },
+  appliedCouponLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#16A34A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   appliedCouponCode: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#14532d',
-    marginBottom: 4,
+    fontWeight: '600',
+    color: '#14532D',
+    marginBottom: 2,
   },
   appliedCouponText: {
     fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 4,
+    color: '#6B7280',
   },
-  appliedCouponSavings: {
+  savingsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  savingsLabel: {
     fontSize: 14,
-    color: '#16a34a',
-    fontWeight: '500',
+    color: '#6B7280',
+  },
+  savingsAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#16A34A',
+  },
+  paymentMethodCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   paymentMethods: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    gap: 12,
   },
   paymentMethod: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
   },
   selectedPaymentMethod: {
-    backgroundColor: '#faf5ff',
-    borderWidth: 2,
-    borderColor: '#7c3aed',
-    borderRadius: 8,
-    margin: 8,
+    borderColor: '#8B5CF6',
+    backgroundColor: '#F5F3FF',
   },
-  paymentMethodText: {
+  methodInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  methodName: {
     fontSize: 16,
-    color: '#6b7280',
+    color: '#374151',
     marginLeft: 12,
   },
-  selectedPaymentMethodText: {
-    color: '#7c3aed',
+  selectedMethodName: {
+    color: '#7C3AED',
     fontWeight: '600',
   },
-  cardForm: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    borderWidth: 2,
-    borderColor: '#e9d5ff',
+  checkMark: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#8B5CF6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  upiForm: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    borderWidth: 2,
-    borderColor: '#e9d5ff',
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
+  checkText: {
+    color: 'white',
     fontSize: 14,
-    color: '#374151',
-    marginBottom: 8,
-    fontWeight: '500',
+    fontWeight: 'bold',
   },
-  input: {
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    fontSize: 16,
-    backgroundColor: 'white',
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  infoBox: {
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#3b82f6',
-    borderRadius: 8,
-    padding: 12,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#1e40af',
-    lineHeight: 20,
-  },
-  bottomBar: {
+  bottomCard: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'white',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    borderTopColor: '#E5E7EB',
     paddingHorizontal: 24,
     paddingVertical: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
-    shadowRadius: 15,
+    shadowRadius: 4,
     elevation: 5,
+  },
+  bottomContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  bottomPrice: {
+  amountSection: {
     flex: 1,
   },
-  bottomPriceLabel: {
-    fontSize: 12,
-    color: '#6b7280',
+  totalLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
   },
-  bottomPriceAmount: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  bottomPriceValue: {
+  totalAmount: {
     fontSize: 20,
-    color: '#7c3aed',
     fontWeight: 'bold',
+    color: '#7C3AED',
   },
   payNowButton: {
-    borderRadius: 50,
-    overflow: 'hidden',
-    height: 48,
+    borderRadius: 25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  payNowButtonGradient: {
+  payNowButtonInner: {
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+  },
+  payNowText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
     flex: 1,
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  payNowButtonText: {
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  successIcon: {
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 24,
+  },
+  pointsText: {
+    fontSize: 16,
+    color: '#10B981',
+    fontWeight: 'bold',
+    marginBottom: 24,
+  },
+  modalButton: {
+    backgroundColor: '#8B5CF6',
+    borderRadius: 25,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+  },
+  modalButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',

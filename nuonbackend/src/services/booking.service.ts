@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { getSocket } from '../lib/socket';
 
 @Injectable()
 export class BookingService {
@@ -7,6 +8,20 @@ export class BookingService {
 
     async createBooking(bookingData: any, userId: bigint): Promise<any> {
         try {
+            // Validate that the availability slot is in the future
+            const availability = await this.prisma.mentorAvailability.findUnique({
+                where: { id: bookingData.mentorAvailabilityId }
+            });
+
+            if (!availability) {
+                throw new Error('Availability slot not found');
+            }
+
+            const now = new Date();
+            if (availability.startDateTime <= now) {
+                throw new Error('Cannot book past or current time slots');
+            }
+
             const booking = await this.prisma.booking.create({
                 data: {
                     ...bookingData,
@@ -20,9 +35,16 @@ export class BookingService {
                 }
             });
 
-            // TODO: Emit socket notification
-            // const io = getSocket();
-            // if (io) io.emit('notification', { type: 'booking:created', booking });
+            // Emit socket notification for booking creation
+            const io = getSocket();
+            if (io) {
+                // Notify the mentor about new booking request
+                io.to(booking.mentorId.toString()).emit('booking_update', {
+                    type: 'created',
+                    booking: booking,
+                    message: `New booking request from ${booking.nurse.name}`
+                });
+            }
 
             return booking;
         } catch (error) {
@@ -60,9 +82,16 @@ export class BookingService {
                 }
             });
 
-            // TODO: Emit socket notification
-            // const io = getSocket();
-            // if (io) io.emit('notification', { type: 'booking:updated', booking });
+            // Emit socket notification for booking status update
+            const io = getSocket();
+            if (io) {
+                // Notify the nurse about booking status change
+                io.to(booking.nurseId.toString()).emit('booking_update', {
+                    type: status,
+                    booking: booking,
+                    message: `Your booking has been ${status}`
+                });
+            }
 
             return booking;
         } catch (error) {
@@ -100,6 +129,43 @@ export class BookingService {
             });
 
             return { message: 'Zoom session created successfully', zoomSession };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async rescheduleBooking(bookingId: bigint, newDateTime: Date, newAvailabilityId: bigint): Promise<any> {
+        try {
+            const booking = await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: {
+                    dateTime: newDateTime,
+                    mentorAvailabilityId: newAvailabilityId
+                },
+                include: {
+                    nurse: true,
+                    mentor: true,
+                    mentorAvailability: true
+                }
+            });
+
+            // Emit socket notification for rescheduling
+            const io = getSocket();
+            if (io) {
+                // Notify both mentor and nurse about rescheduling
+                io.to(booking.mentorId.toString()).emit('booking_update', {
+                    type: 'rescheduled',
+                    booking: booking,
+                    message: `Booking rescheduled to ${newDateTime.toISOString()}`
+                });
+                io.to(booking.nurseId.toString()).emit('booking_update', {
+                    type: 'rescheduled',
+                    booking: booking,
+                    message: `Your session has been rescheduled to ${newDateTime.toISOString()}`
+                });
+            }
+
+            return booking;
         } catch (error) {
             throw new Error((error as Error).message);
         }

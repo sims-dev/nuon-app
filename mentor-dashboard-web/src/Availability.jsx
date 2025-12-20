@@ -3,81 +3,95 @@ import Sidebar from './Sidebar';
 import { Box, Typography, Button, Card, CardContent, Grid, TextField, IconButton, List, ListItem, ListItemText } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
-
-const initialSlots = [
-  { date: '2025-11-01', time: '10:00', duration: 45 },
-  { date: '2025-11-02', time: '14:00', duration: 60 },
-];
+import { IP_ADDRESS } from './config/ipConfig';
 
 const Availability = () => {
-  const [slots, setSlots] = useState(initialSlots);
-  const [newSlot, setNewSlot] = useState({ date: '', time: '', duration: 45 });
-  const { socket, isConnected } = useSocket();
+  const [slots, setSlots] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [newSlot, setNewSlot] = useState({ title: '', description: '', startDateTime: '', endDateTime: '', duration: 45, maxBookings: 1, price: 0, sessionType: 'mentoring', meetingType: 'zoom', specializations: [] });
   const { user } = useAuth();
 
-  useEffect(() => {
-    if (socket && isConnected && user) {
-      // Listen for mentor availability updates
-      const handleMentorAvailabilityUpdate = (data) => {
-        console.log('Mentor availability update:', data);
-        if (data.mentorId === user.id) {
-          // Update local slots based on the update
-          if (data.action === 'add') {
-            setSlots(prev => [...prev, {
-              date: data.slot.date,
-              time: data.slot.time,
-              duration: data.slot.duration
-            }]);
-          } else if (data.action === 'remove') {
-            setSlots(prev => prev.filter(slot =>
-              !(slot.date === data.slot.date && slot.time === data.slot.time)
-            ));
-          }
-        }
-      };
+  const API_BASE = (process.env.REACT_APP_API_BASE_URL || `http://${IP_ADDRESS}:5000/api`) + '/mentors/mentor';
 
-      socket.on('mentor_availability_update', handleMentorAvailabilityUpdate);
+  // Fetch availability
+  const fetchAvailability = () => {
+    setLoading(true);
+    fetch(`${API_BASE}/availability?upcoming=true`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        setSlots(data.availability || []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError('Failed to load availability');
+        setLoading(false);
+      });
+  };
 
-      return () => {
-        socket.off('mentor_availability_update', handleMentorAvailabilityUpdate);
-      };
-    }
-  }, [socket, isConnected, user]);
+  useEffect(() => { fetchAvailability(); }, []);
 
   const handleChange = (e) => {
     setNewSlot({ ...newSlot, [e.target.name]: e.target.value });
   };
 
-  const addSlot = () => {
-    if (newSlot.date && newSlot.time && newSlot.duration) {
-      const slotToAdd = { ...newSlot };
-      setSlots([...slots, slotToAdd]);
-      setNewSlot({ date: '', time: '', duration: 45 });
+  const addSlot = async () => {
+    if (newSlot.startDateTime && newSlot.endDateTime && newSlot.duration) {
+      // Basic frontend validation
+      const start = new Date(newSlot.startDateTime);
+      const end = new Date(newSlot.endDateTime);
+      const now = new Date();
 
-      // Emit availability update via socket
-      if (socket && isConnected && user) {
-        socket.emit('update_mentor_availability', {
-          mentorId: user.id,
-          action: 'add',
-          slot: slotToAdd
+      if (start >= end) {
+        setError('Start time must be before end time');
+        return;
+      }
+
+      if (start <= now) {
+        setError('Start time must be in the future');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/availability`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+          },
+          body: JSON.stringify(newSlot)
         });
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.message || 'Failed to add slot');
+        }
+        fetchAvailability();
+        setNewSlot({ title: '', description: '', startDateTime: '', endDateTime: '', duration: 45, maxBookings: 1, price: 0, sessionType: 'mentoring', meetingType: 'zoom', specializations: [] });
+        setError(''); // Clear any previous errors
+      } catch (error) {
+        setError(error.message || 'Failed to add slot');
       }
     }
   };
 
-  const removeSlot = (idx) => {
-    const slotToRemove = slots[idx];
-    setSlots(slots.filter((_, i) => i !== idx));
-
-    // Emit availability update via socket
-    if (socket && isConnected && user) {
-      socket.emit('update_mentor_availability', {
-        mentorId: user.id,
-        action: 'remove',
-        slot: slotToRemove
+  const removeSlot = async (slotId) => {
+    try {
+      const res = await fetch(`${API_BASE}/availability/${slotId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        }
       });
+      if (!res.ok) throw new Error('Failed to delete slot');
+      fetchAvailability();
+    } catch {
+      setError('Failed to delete slot');
     }
   };
 
@@ -88,73 +102,122 @@ const Availability = () => {
         <Typography variant="h4" sx={{ color: 'primary.main', fontWeight: 'bold', mb: 3 }}>
           Manage Availability
         </Typography>
-        <Card sx={{ maxWidth: 600, background: 'background.paper', border: '1px solid #00fff7', boxShadow: '0 0 16px #00fff733', mb: 4 }}>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2, color: 'secondary.main' }}>Add New Slot</Typography>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={4}>
-                <TextField
-                  label="Date"
-                  name="date"
-                  type="date"
-                  value={newSlot.date}
-                  onChange={handleChange}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                  sx={{ mb: 1 }}
-                />
-              </Grid>
-              <Grid item xs={4}>
-                <TextField
-                  label="Time"
-                  name="time"
-                  type="time"
-                  value={newSlot.time}
-                  onChange={handleChange}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                  sx={{ mb: 1 }}
-                />
-              </Grid>
-              <Grid item xs={3}>
-                <TextField
-                  label="Duration (min)"
-                  name="duration"
-                  type="number"
-                  value={newSlot.duration}
-                  onChange={handleChange}
-                  fullWidth
-                  sx={{ mb: 1 }}
-                />
-              </Grid>
-              <Grid item xs={1}>
-                <IconButton color="primary" onClick={addSlot} sx={{ mt: 1 }}>
-                  <AddIcon />
-                </IconButton>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-        <Card sx={{ maxWidth: 600, background: 'background.paper', border: '1px solid #00fff7', boxShadow: '0 0 16px #00fff733' }}>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2, color: 'secondary.main' }}>Your Slots</Typography>
-            <List>
-              {slots.length === 0 && <ListItem><ListItemText primary="No slots added yet." /></ListItem>}
-              {slots.map((slot, idx) => (
-                <ListItem key={idx} secondaryAction={
-                  <IconButton edge="end" color="error" onClick={() => removeSlot(idx)}>
-                    <DeleteIcon />
-                  </IconButton>
-                }>
-                  <ListItemText
-                    primary={`${slot.date} at ${slot.time}`}
-                    secondary={`Duration: ${slot.duration} min`}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          </CardContent>
-        </Card>
+        {loading ? <Typography sx={{ color: '#fff' }}>Loading...</Typography> : (
+          <>
+            <Card sx={{ maxWidth: 800, background: 'background.paper', border: '1px solid #00fff7', boxShadow: '0 0 16px #00fff733', mb: 4 }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, color: 'secondary.main' }}>Add New Slot</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Title"
+                      name="title"
+                      value={newSlot.title}
+                      onChange={handleChange}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Description"
+                      name="description"
+                      value={newSlot.description}
+                      onChange={handleChange}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Start Date & Time"
+                      name="startDateTime"
+                      type="datetime-local"
+                      value={newSlot.startDateTime}
+                      onChange={handleChange}
+                      InputLabelProps={{ shrink: true }}
+                      inputProps={{ min: new Date().toISOString().slice(0, 16) }}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="End Date & Time"
+                      name="endDateTime"
+                      type="datetime-local"
+                      value={newSlot.endDateTime}
+                      onChange={handleChange}
+                      InputLabelProps={{ shrink: true }}
+                      inputProps={{ min: new Date().toISOString().slice(0, 16) }}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Duration (min)"
+                      name="duration"
+                      type="number"
+                      value={newSlot.duration}
+                      onChange={handleChange}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Max Bookings"
+                      name="maxBookings"
+                      type="number"
+                      value={newSlot.maxBookings}
+                      onChange={handleChange}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Price (₹)"
+                      name="price"
+                      type="number"
+                      value={newSlot.price}
+                      onChange={handleChange}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Button variant="contained" color="primary" onClick={addSlot} startIcon={<AddIcon />}>
+                      Add Slot
+                    </Button>
+                  </Grid>
+                </Grid>
+                {error && <Typography sx={{ color: 'red', mt: 2 }}>{error}</Typography>}
+              </CardContent>
+            </Card>
+            <Card sx={{ maxWidth: 800, background: 'background.paper', border: '1px solid #00fff7', boxShadow: '0 0 16px #00fff733' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, color: 'secondary.main' }}>Your Slots</Typography>
+                <List>
+                  {slots.length === 0 && <ListItem><ListItemText primary="No slots added yet." /></ListItem>}
+                  {slots.map((slot) => (
+                    <ListItem key={slot.id} secondaryAction={
+                      <IconButton edge="end" color="error" onClick={() => removeSlot(slot.id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    }>
+                      <ListItemText
+                        primary={`${slot.title} - ${new Date(slot.startDateTime).toLocaleString()}`}
+                        secondary={`Duration: ${slot.duration} min, Price: ₹${slot.price}`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </Box>
     </Box>
   );
