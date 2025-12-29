@@ -49,24 +49,6 @@ const LoginScreen = () => {
       updateUser(user);
 
       Alert.alert('Success', 'Login successful!');
-
-      // Check if user profile is complete and navigate accordingly
-      if (user?.isProfileComplete) {
-        navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
-      } else {
-        // Navigate to profile setup if profile is incomplete
-        navigation.reset({
-          index: 0,
-          routes: [{
-            name: 'ProfileSetup',
-            params: {
-              user: user,
-              token: token,
-              isNewUser: false
-            }
-          }]
-        });
-      }
     } catch (error) {
       console.error('Login error:', error);
       const errorMessage = error.response?.data?.message || 'Login failed';
@@ -76,13 +58,6 @@ const LoginScreen = () => {
     }
   };
 
-  const goToProfileSetup = () => {
-    navigation.navigate('ProfileSetup', {
-      user: null,
-      token: null,
-      isNewUser: true
-    });
-  };
 
   return (
     <LinearGradient colors={NEON_COLORS.gradientPurpleToBlue} style={styles.container}>
@@ -124,9 +99,6 @@ const LoginScreen = () => {
               </View>
               <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={handleEmailLogin} disabled={loading}>
                 {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign In</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.linkButton} onPress={goToProfileSetup}>
-                <Text style={styles.linkText}>Complete Your Profile</Text>
               </TouchableOpacity>
             </View>
             {/* Footer below the card */}

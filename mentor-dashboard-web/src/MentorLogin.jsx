@@ -33,7 +33,10 @@ const MentorLogin = () => {
       });
 
       const data = await response.json();
-      console.log('Login response:', data);
+      console.log('Login response status:', response.status);
+      console.log('Login response ok:', response.ok);
+      console.log('Login response data:', data);
+      console.log('Has accessToken:', !!data.accessToken);
 
       if (response.ok && data.accessToken) {
         const user = data.user;

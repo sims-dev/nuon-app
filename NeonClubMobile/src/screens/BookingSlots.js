@@ -10,10 +10,9 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
-import BookingPromptModal from '../components/BookingPromptModal';
-import { checkProfileCompletion } from '../utils/profileUtils';
 import { mentorAPI } from '../api/mentorAPI';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { connectSocket, on } from '../utils/socket';
 
 // SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -26,11 +25,27 @@ const BookingSlots = ({ route, navigation }) => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
-  const [missingFields, setMissingFields] = useState([]);
   const [availabilitySlots, setAvailabilitySlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dates, setDates] = useState([]);
+
+  const fetchAvailability = async () => {
+    try {
+      setLoading(true);
+      const response = await mentorAPI.fetchMentorAvailability(mentor.id);
+      if (response && response.success && Array.isArray(response.slots)) {
+        setAvailabilitySlots(response.slots);
+      } else {
+        setAvailabilitySlots([]);
+      }
+    } catch (error) {
+      console.error('Error fetching availability:', error);
+      Alert.alert('Error', 'Failed to load availability slots');
+      setAvailabilitySlots([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Generate dates for current week and next few weeks
   const generateDates = () => {
@@ -43,7 +58,7 @@ const BookingSlots = ({ route, navigation }) => {
       dates.push({
         day: date.toLocaleDateString('en-US', { weekday: 'short' }),
         date: date.getDate(),
-        fullDate: date.toISOString().split('T')[0],
+        fullDate: date.toLocaleDateString('en-CA'), // YYYY-MM-DD in local time
         month: date.toLocaleDateString('en-US', { month: 'short' }),
         year: date.getFullYear(),
         isPast: date < new Date(new Date().setHours(0, 0, 0, 0)),
@@ -52,35 +67,8 @@ const BookingSlots = ({ route, navigation }) => {
     return dates;
   };
 
-  useEffect(() => {
-    if (!route.params?.skipProfileCheck) {
-      const checkProfile = async () => {
-        const { isComplete, missingFields: fields } = await checkProfileCompletion();
-        if (!isComplete) {
-          setMissingFields(fields);
-          setShowProfilePrompt(true);
-        }
-      };
-      checkProfile();
-    }
-  }, []);
 
   useEffect(() => {
-    const fetchAvailability = async () => {
-      try {
-        setLoading(true);
-        const slots = await mentorAPI.fetchMentorAvailability(mentor.id);
-        if (slots && Array.isArray(slots)) {
-          setAvailabilitySlots(slots);
-        }
-      } catch (error) {
-        console.error('Error fetching availability:', error);
-        Alert.alert('Error', 'Failed to load availability slots');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (mentor && mentor.id) {
       fetchAvailability();
     }
@@ -89,23 +77,88 @@ const BookingSlots = ({ route, navigation }) => {
     setDates(generateDates());
   }, [mentor]);
 
+  // Socket.IO real-time updates
+  useEffect(() => {
+    let socketCleanup = [];
+
+    const initializeSocket = async () => {
+      try {
+        const socket = connectSocket();
+
+        // Listen for mentor availability updates
+        socketCleanup.push(on('mentor_availability_update', (data) => {
+          console.log('Mentor availability updated:', data);
+          if (data.mentorId === mentor.id) {
+            // Refresh availability slots
+            fetchAvailability();
+          }
+        }));
+
+        // Listen for new mentor availability
+        socketCleanup.push(on('new_mentor_availability', (data) => {
+          console.log('New mentor availability added:', data);
+          if (data.mentorId === mentor.id) {
+            fetchAvailability();
+          }
+        }));
+
+        // Listen for availability deleted
+        socketCleanup.push(on('availability-deleted', (data) => {
+          console.log('Availability deleted:', data);
+          if (data.mentorId === mentor.id) {
+            fetchAvailability();
+          }
+        }));
+
+        // Listen for booking updates
+        socketCleanup.push(on('booking_update', (data) => {
+          console.log('Booking update:', data);
+          if (data.mentorId === mentor.id) {
+            fetchAvailability();
+          }
+        }));
+
+      } catch (error) {
+        console.error('Socket initialization failed:', error);
+      }
+    };
+
+    if (mentor && mentor.id) {
+      initializeSocket();
+    }
+
+    return () => {
+      socketCleanup.forEach(cleanup => cleanup && cleanup());
+    };
+  }, [mentor]);
+
   // Get available time slots for selected date
   const getTimeSlotsForDate = (dateString) => {
+    // Filter slots for the selected date that are active
     const slotsForDate = availabilitySlots.filter(slot => {
-      const slotDate = new Date(slot.startDateTime).toISOString().split('T')[0];
-      return slotDate === dateString && slot.isActive && slot.currentBookings < slot.maxBookings;
+      const slotDate = new Date(slot.startDateTime).toLocaleDateString('en-CA');
+      return slotDate === dateString && slot.isActive;
     });
 
-    return slotsForDate.map(slot => ({
-      id: slot.id,
-      time: new Date(slot.startDateTime).toLocaleTimeString('en-US', {
+    return slotsForDate.map(slot => {
+      const startTime = new Date(slot.startDateTime).toLocaleTimeString('en-US', {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true
-      }),
-      status: 'available',
-      slot: slot
-    }));
+      }).replace(' ', '');
+      const endTime = new Date(slot.endDateTime).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }).replace(' ', '');
+      const isBooked = slot.currentBookings >= slot.maxBookings;
+      return {
+        id: slot.id,
+        time: `${startTime}-${endTime}`,
+        status: isBooked ? 'booked' : 'available',
+        slot: slot
+      };
+    });
   };
 
   const addMinutesToTime = (time, minutes) => {
@@ -138,14 +191,22 @@ const BookingSlots = ({ route, navigation }) => {
       }, token);
 
       if (bookingResult.success) {
-        navigation.navigate('Payment', {
-          mentor,
-          bookingDetails: {
-            slot: selectedSlot,
-            booking: bookingResult.booking,
-            price: selectedSlot.price || mentor.price
-          }
-        });
+        const isFreeMentor = mentor.price == 0;
+        if (isFreeMentor) {
+          // For free mentors, show success and navigate back or to sessions
+          Alert.alert('Request Sent', 'Your session request has been sent to the mentor. You will be notified once accepted.', [
+            { text: 'OK', onPress: () => navigation.goBack() }
+          ]);
+        } else {
+          navigation.navigate('Payment', {
+            mentor,
+            bookingDetails: {
+              slot: selectedSlot,
+              booking: bookingResult.booking,
+              price: selectedSlot.price || mentor.price
+            }
+          });
+        }
       } else {
         Alert.alert('Booking Failed', bookingResult.message || 'Failed to book session');
       }
@@ -170,7 +231,7 @@ const BookingSlots = ({ route, navigation }) => {
     <View style={styles.container}>
       {/* Header */}
       <LinearGradient
-        colors={['#EC4899', '#8B5CF6', '#F97316']}
+        colors={['#8B5CF6', '#EC4899', '#F97316']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.header}
@@ -189,24 +250,28 @@ const BookingSlots = ({ route, navigation }) => {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Mentor Info Card */}
         <View style={styles.mentorCard}>
-          <View style={styles.mentorInfo}>
-            <View style={styles.mentorImageContainer}>
-              <View style={styles.mentorImage}>
-                <Text style={styles.mentorInitial}>{mentor.name.charAt(0)}</Text>
+          <View style={styles.mentorCardContent}>
+            <View style={styles.mentorInfo}>
+              <View style={styles.mentorImageContainer}>
+                <View style={styles.mentorImage}>
+                  <Text style={styles.mentorInitial}>{mentor.name.charAt(0)}</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.mentorDetails}>
-              <Text style={styles.mentorName}>{mentor.name}</Text>
-              <Text style={styles.mentorSpecialty}>{mentor.specialization}</Text>
-              <View style={styles.sessionInfo}>
-                <Text style={styles.sessionDuration}>45 min</Text>
-                <Text style={styles.sessionPrice}>₹{mentor.price}</Text>
+              <View style={styles.mentorDetails}>
+                <Text style={styles.mentorName}>{mentor.name}</Text>
+                <Text style={styles.mentorSpecialty}>{mentor.specialization}</Text>
+                <View style={styles.sessionInfo}>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>45 min session</Text>
+                  </View>
+                  <Text style={styles.sessionPrice}>₹{mentor.price}</Text>
+                </View>
               </View>
             </View>
           </View>
         </View>
 
-        {/* Date Selector */}
+        {/* Select Date */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <SvgXml xml={calendarSvg} width={20} height={20} color="#8B5CF6" />
@@ -216,173 +281,174 @@ const BookingSlots = ({ route, navigation }) => {
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.dateScroll}
+            contentContainerStyle={styles.dateScrollContent}
           >
             {dates.map((date, index) => {
-               const hasAvailableSlots = getTimeSlotsForDate(date.fullDate).length > 0;
-               return (
-                 <TouchableOpacity
-                   key={index}
-                   style={[
-                     styles.dateCard,
-                     selectedDate === date.fullDate && styles.selectedDateCard,
-                     date.isPast && styles.pastDateCard,
-                     !hasAvailableSlots && !date.isPast && styles.noSlotsDateCard
-                   ]}
-                   onPress={() => !date.isPast && hasAvailableSlots && handleDateSelect(date)}
-                   disabled={date.isPast || !hasAvailableSlots}
-                 >
+                const availableSlots = getTimeSlotsForDate(date.fullDate);
+                const hasAvailableSlots = availableSlots.length > 0;
+                const isEnabled = !date.isPast && hasAvailableSlots;
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.dateCard,
+                      selectedDate === date.fullDate && styles.selectedDateCard,
+                      date.isPast && styles.pastDateCard,
+                      !isEnabled && !date.isPast && styles.noSlotsDateCard
+                    ]}
+                    onPress={() => isEnabled && handleDateSelect(date)}
+                    disabled={!isEnabled}
+                  >
                 <Text style={[
                   styles.dateDay,
                   selectedDate === date.fullDate && styles.selectedDateText,
-                  (date.isPast || !hasAvailableSlots) && styles.disabledDateText
+                  !isEnabled && styles.disabledDateText
                 ]}>
                   {date.day}
                 </Text>
                 <Text style={[
                   styles.dateNumber,
                   selectedDate === date.fullDate && styles.selectedDateText,
-                  (date.isPast || !hasAvailableSlots) && styles.disabledDateText
+                  !isEnabled && styles.disabledDateText
                 ]}>
                   {date.date}
                 </Text>
                 <Text style={[
                   styles.dateMonth,
                   selectedDate === date.fullDate && styles.selectedDateText,
-                  (date.isPast || !hasAvailableSlots) && styles.disabledDateText
+                  !isEnabled && styles.disabledDateText
                 ]}>
                   {date.month}
                 </Text>
               </TouchableOpacity>
               );
-            })}
+           })}
           </ScrollView>
         </View>
 
-        {/* Time Slots */}
+        {/* Select Time Slot */}
         {selectedDate && (
-           <View style={styles.section}>
-             <View style={styles.sectionHeader}>
-               <SvgXml xml={clockSvg} width={20} height={20} color="#8B5CF6" />
-               <Text style={styles.sectionTitle}>Select Time Slot</Text>
-             </View>
-             {loading ? (
-               <View style={styles.loadingContainer}>
-                 <ActivityIndicator size="large" color="#8B5CF6" />
-                 <Text style={styles.loadingText}>Loading available slots...</Text>
-               </View>
-             ) : (
-               <View style={styles.timeGrid}>
-                 {getTimeSlotsForDate(selectedDate).length > 0 ? (
-                   getTimeSlotsForDate(selectedDate).map((slot, index) => {
-                     const slotTime = new Date(slot.slot.startDateTime);
-                     const now = new Date();
-                     const isPast = slotTime <= now;
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <SvgXml xml={clockSvg} width={20} height={20} color="#8B5CF6" />
+                <Text style={styles.sectionTitle}>Select Time Slot</Text>
+              </View>
+              {loading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#8B5CF6" />
+                  <Text style={styles.loadingText}>Loading available slots...</Text>
+                </View>
+              ) : (
+                <View style={styles.timeGrid}>
+                  {getTimeSlotsForDate(selectedDate).length > 0 ? (
+                    getTimeSlotsForDate(selectedDate).map((slot, index) => {
+                      const slotTime = new Date(slot.slot.startDateTime);
+                      const now = new Date();
+                      const isPast = slotTime <= now;
+                      const isBooked = slot.status === 'booked';
 
-                     return (
-                       <TouchableOpacity
-                         key={index}
-                         style={[
-                           styles.timeSlot,
-                           selectedTime === slot.time && styles.selectedTimeSlot,
-                           isPast && styles.pastTimeSlot
-                         ]}
-                         onPress={() => !isPast && handleTimeSelect(slot)}
-                         disabled={isPast}
-                       >
-                         <Text style={[
-                           styles.timeText,
-                           selectedTime === slot.time && styles.selectedTimeText,
-                           isPast && styles.pastTimeText
-                         ]}>
-                           {slot.time}
-                         </Text>
-                         {selectedTime === slot.time && (
-                           <View style={styles.checkIcon}>
-                             <SvgXml xml={checkSvg} width={12} height={12} color="#8B5CF6" />
-                           </View>
-                         )}
-                       </TouchableOpacity>
-                     );
-                   })
-                 ) : (
-                   <View style={styles.noSlotsContainer}>
-                     <Text style={styles.noSlotsText}>No available slots for this date</Text>
-                   </View>
-                 )}
-               </View>
-             )}
-           </View>
-         )}
+                      return (
+                        <TouchableOpacity
+                          key={index}
+                          style={[
+                            styles.timeSlot,
+                            selectedTime === slot.time && styles.selectedTimeSlot,
+                            isPast && styles.pastTimeSlot,
+                            isBooked && styles.bookedTimeSlot
+                          ]}
+                          onPress={() => !isPast && !isBooked && handleTimeSelect(slot)}
+                          disabled={isPast || isBooked}
+                        >
+                          {selectedTime === slot.time && (
+                            <View style={styles.checkIcon}>
+                              <SvgXml xml={checkSvg} width={12} height={12} color="#8B5CF6" />
+                            </View>
+                          )}
+                          <Text style={[
+                            styles.timeText,
+                            selectedTime === slot.time && styles.selectedTimeText,
+                            isPast && styles.pastTimeText,
+                            isBooked && styles.bookedTimeText
+                          ]}>
+                            {slot.time}
+                          </Text>
+                          {isBooked && (
+                            <Text style={styles.bookedLabel}>Booked</Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })
+                  ) : (
+                    <View style={styles.noSlotsContainer}>
+                      <Text style={styles.noSlotsText}>No available slots for this date</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
 
-        {/* Booking Summary */}
-        {selectedSlot && (
-           <View style={styles.summaryCard}>
-             <Text style={styles.summaryTitle}>Booking Summary</Text>
-             <View style={styles.summaryDivider} />
-             <View style={styles.summaryRow}>
-               <Text style={styles.summaryLabel}>Mentor</Text>
-               <Text style={styles.summaryValue}>{mentor.name}</Text>
-             </View>
-             <View style={styles.summaryRow}>
-               <Text style={styles.summaryLabel}>Date</Text>
-               <Text style={styles.summaryValue}>
-                 {dates.find(d => d.fullDate === selectedDate)?.day}, {dates.find(d => d.fullDate === selectedDate)?.date} {dates.find(d => d.fullDate === selectedDate)?.month}
-               </Text>
-             </View>
-             <View style={styles.summaryRow}>
-               <Text style={styles.summaryLabel}>Time</Text>
-               <Text style={styles.summaryValue}>
-                 {selectedTime} – {addMinutesToTime(selectedTime, selectedSlot.duration || 45)}
-               </Text>
-             </View>
-             <View style={styles.summaryRow}>
-               <Text style={styles.summaryLabel}>Session Fee</Text>
-               <Text style={styles.summaryPrice}>₹{selectedSlot.price || mentor.price}</Text>
-             </View>
-           </View>
-         )}
+        {/* Summary */}
+        {selectedDate && selectedSlot && (
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryCardContent}>
+                <Text style={styles.summaryTitle}>Booking Summary</Text>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Mentor</Text>
+                  <Text style={styles.summaryValue}>{mentor.name}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Date</Text>
+                  <Text style={styles.summaryValue}>
+                    {dates.find(d => d.fullDate === selectedDate)?.day}, {dates.find(d => d.fullDate === selectedDate)?.date} {dates.find(d => d.fullDate === selectedDate)?.month}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Time</Text>
+                  <Text style={styles.summaryValue}>
+                    {selectedTime}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Session Fee</Text>
+                  <Text style={styles.summaryPrice}>₹{selectedSlot.price || mentor.price}</Text>
+                </View>
+              </View>
+            </View>
+          )}
       </ScrollView>
 
-      {/* Bottom Button */}
+      {/* Book Button */}
       <View style={styles.bottomBar}>
         <LinearGradient
-          colors={['#7c3aed', '#ec4899', '#ea580c']}
+          colors={['#8B5CF6', '#EC4899', '#F97316']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={styles.proceedBtn}
+          style={styles.bookBtn}
         >
           <TouchableOpacity
-             style={styles.proceedBtnInner}
-             onPress={handleProceedToPayment}
-             disabled={!selectedSlot}
-           >
-            <SvgXml xml={calendarSvg} width={20} height={20} color="white" />
-            <Text style={styles.proceedText}>Proceed to Payment</Text>
+              style={styles.bookBtnInner}
+              onPress={handleProceedToPayment}
+              disabled={!selectedSlot}
+            >
+            <Text style={styles.bookText}>Proceed to Payment</Text>
           </TouchableOpacity>
         </LinearGradient>
       </View>
 
-      <BookingPromptModal
-        visible={showProfilePrompt}
-        onCompleteNow={() => {
-          setShowProfilePrompt(false);
-          navigation.navigate('Profile', { screen: 'ProfileEdit' });
-        }}
-        onMaybeLater={() => setShowProfilePrompt(false)}
-        missingFields={missingFields}
-      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FDFBFF' },
+  container: { flex: 1, backgroundColor: '#f9fafb' },
   header: {
-    paddingTop: 48,
-    paddingBottom: 24,
+    paddingTop: 50,
+    paddingBottom: 20,
     paddingHorizontal: 24,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.1,
     shadowRadius: 25,
@@ -411,15 +477,19 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   mentorCard: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 24,
+  },
+  mentorCardContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
   },
   mentorInfo: {
     flexDirection: 'row',
@@ -427,12 +497,14 @@ const styles = StyleSheet.create({
   },
   mentorImageContainer: { marginRight: 16 },
   mentorImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
+    width: 64,
+    height: 64,
+    borderRadius: 16,
     backgroundColor: '#8B5CF6',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
   },
   mentorInitial: {
     fontSize: 24,
@@ -449,23 +521,30 @@ const styles = StyleSheet.create({
   mentorSpecialty: {
     fontSize: 14,
     color: '#6B7280',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   sessionInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  sessionDuration: {
-    fontSize: 14,
-    color: '#6B7280',
+  badge: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgeText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '500',
   },
   sessionPrice: {
     fontSize: 16,
-    color: '#7C3AED',
+    color: '#111827',
     fontWeight: '600',
   },
-  section: { marginBottom: 20 },
+  section: { marginBottom: 24 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -478,20 +557,31 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   dateScroll: { marginBottom: 16 },
+  dateScrollContent: { paddingHorizontal: 0 },
   dateCard: {
-    width: 70,
-    height: 80,
+    width: 80,
+    height: 90,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
     borderWidth: 2,
     borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   selectedDateCard: {
     backgroundColor: '#F5F3FF',
     borderColor: '#8B5CF6',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   dateDay: {
     fontSize: 12,
@@ -499,7 +589,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   dateNumber: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#111827',
     marginBottom: 2,
@@ -508,7 +598,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
   },
-  selectedDateText: { color: '#7C3AED' },
+  selectedDateText: { color: '#8B5CF6' },
   disabledDateText: { color: '#9CA3AF' },
   pastDateCard: {
     backgroundColor: '#F9FAFB',
@@ -525,36 +615,54 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   timeSlot: {
-    width: '30%',
+    width: '48%',
     aspectRatio: 2.5,
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#E5E7EB',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   selectedTimeSlot: {
     backgroundColor: '#F5F3FF',
     borderColor: '#8B5CF6',
-  },
-  bookedTimeSlot: {
-    backgroundColor: '#F3F4F6',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   pastTimeSlot: {
     backgroundColor: '#F9FAFB',
     borderColor: '#E5E7EB',
     opacity: 0.6,
   },
+  bookedTimeSlot: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    opacity: 0.8,
+  },
   timeText: {
     fontSize: 14,
     color: '#374151',
     fontWeight: '500',
   },
-  selectedTimeText: { color: '#7C3AED' },
-  bookedTimeText: { color: '#9CA3AF' },
+  selectedTimeText: { color: '#8B5CF6', fontWeight: '600' },
   pastTimeText: { color: '#9CA3AF' },
+  bookedTimeText: { color: '#DC2626' },
+  bookedLabel: {
+    fontSize: 10,
+    color: '#DC2626',
+    fontWeight: '600',
+    marginTop: 2,
+  },
   loadingContainer: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -585,17 +693,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   summaryCard: {
-    backgroundColor: '#F5F3FF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 100,
-    borderWidth: 1,
-    borderColor: '#DDD6FE',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 100,
+  },
+  summaryCardContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
   },
   summaryTitle: {
     fontSize: 18,
@@ -605,13 +715,13 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: '#DDD6FE',
+    backgroundColor: '#E5E7EB',
     marginBottom: 16,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   summaryLabel: {
     fontSize: 14,
@@ -623,8 +733,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   summaryPrice: {
-    fontSize: 14,
-    color: '#7C3AED',
+    fontSize: 16,
+    color: '#8B5CF6',
     fontWeight: '600',
   },
   bottomBar: {
@@ -638,23 +748,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 16,
   },
-  proceedBtn: {
-    borderRadius: 50,
+  bookBtn: {
+    borderRadius: 24,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 15,
     elevation: 3,
   },
-  proceedBtnInner: {
-    flexDirection: 'row',
+  bookBtnInner: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    gap: 8,
   },
-  proceedText: {
+  bookText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
   },
 });

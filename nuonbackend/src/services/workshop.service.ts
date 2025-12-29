@@ -17,35 +17,52 @@ export class WorkshopService {
                 orderBy: { createdAt: 'desc' }
             });
 
-            const formatted = workshops.map(w => ({
-              _id: w.id.toString(),
-              id: w.id.toString(),
-              title: w.title,
-              slug: w.slug,
-              description: w.description,
-              startDate: w.startDate,
-              endDate: w.endDate,
-              date: w.date || (w.startDate ? w.startDate.toISOString().split('T')[0] : null),
-              time: w.time,
-              duration: w.duration,
-              location: w.location,
-              coverImage: w.coverImage || null,
-              thumbnail: w.coverImage || null,
-              videoUrl: w.videoUrl,
-              videoTitle: w.videoTitle,
-              videoDuration: w.videoDuration,
-              videoQuality: w.videoQuality,
-              videoThumbnail: w.videoThumbnail,
-              mentors: w.mentors,
-              tags: w.tags,
-              isPublished: w.isPublished,
-              createdBy: w.createdBy,
-              creator: w.creator,
-              enrolled: w.enrolled || 0,
-              createdAt: w.createdAt,
-              updatedAt: w.updatedAt,
-              raw: w
-            }));
+            const formatted = workshops.map(w => {
+              // Format date
+              let formattedDate = '';
+              if (w.startDate) {
+                const date = new Date(w.startDate);
+                formattedDate = date.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                });
+              } else if (w.date) {
+                formattedDate = w.date;
+              }
+
+              return {
+                _id: w.id.toString(),
+                id: w.id.toString(),
+                title: w.title,
+                slug: w.slug,
+                description: w.description,
+                price: w.price,
+                points: w.points,
+                startDate: w.startDate,
+                endDate: w.endDate,
+                date: formattedDate,
+                time: w.time,
+                duration: w.duration,
+                location: w.location,
+                coverImage: w.coverImage || null,
+                thumbnail: w.coverImage || null,
+                videoUrl: w.videoUrl,
+                videoTitle: w.videoTitle,
+                videoDuration: w.videoDuration,
+                videoQuality: w.videoQuality,
+                videoThumbnail: w.videoThumbnail,
+                mentors: w.mentors,
+                tags: w.tags,
+                isPublished: w.isPublished,
+                createdBy: w.createdBy,
+                creator: w.creator,
+                enrolled: w.enrolled || 0,
+                createdAt: w.createdAt,
+                updatedAt: w.updatedAt,
+                raw: w
+              };
+            });
 
             return {
                 success: true,
@@ -195,13 +212,30 @@ export class WorkshopService {
                 }
             });
 
-            const formattedWorkshops = workshops.map(workshop => ({
+            const formattedWorkshops = workshops.map(workshop => {
+              // Format date
+              let formattedDate = '';
+              if (workshop.startDate) {
+                const date = new Date(workshop.startDate);
+                formattedDate = date.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                });
+              } else if (workshop.date) {
+                formattedDate = workshop.date;
+              }
+
+              return {
                 _id: workshop.id.toString(),
                 id: workshop.id.toString(),
                 title: workshop.title,
                 description: workshop.description,
+                price: workshop.price,
+                points: workshop.points,
                 startDate: workshop.startDate,
                 endDate: workshop.endDate,
+                date: formattedDate,
                 mentors: workshop.mentors,
                 coverImage: workshop.coverImage || null,
                 thumbnail: workshop.coverImage || null,
@@ -214,7 +248,8 @@ export class WorkshopService {
                 createdAt: workshop.createdAt,
                 updatedAt: workshop.updatedAt,
                 raw: workshop
-            }));
+              };
+            });
 
             return {
                 success: true,

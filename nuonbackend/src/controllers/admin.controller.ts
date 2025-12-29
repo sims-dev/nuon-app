@@ -5,6 +5,8 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { UploadService } from '../services/upload.service';
+import { CreateUserDto } from '../dto/user.dto';
+import { CreateEngageActivityDto, UpdateEngageActivityDto } from '../dto/engage.dto';
 
 @Controller('admin')
 export class AdminController {
@@ -65,7 +67,7 @@ export class AdminController {
 
     @Post('users')
     @UseGuards(JwtAuthGuard)
-    async createUser(@Body() body: any): Promise<any> {
+    async createUser(@Body() body: CreateUserDto): Promise<any> {
         try {
             return await this.adminService.createUser(body);
         } catch (error) {
@@ -381,7 +383,7 @@ export class AdminController {
                 body.videoUrl = video.url;
             }
             if (filesMap.videoThumbnail && filesMap.videoThumbnail[0]) {
-                const vthumb = await this.uploadService.uploadImage(filesMap.videoThumbnail[0]);
+                const vthumb = await this.uploadService.uploadThumbnail(filesMap.videoThumbnail[0]);
                 body.videoThumbnail = vthumb.url;
             }
 
@@ -417,7 +419,7 @@ export class AdminController {
     async updateEngageActivity(
         @Param('id') id: string,
         @UploadedFiles() files: { [fieldname: string]: Express.Multer.File[] },
-        @Body() body: any
+        @Body() body: UpdateEngageActivityDto
     ): Promise<any> {
         try {
             // Convert date to ISO string
@@ -462,7 +464,7 @@ export class AdminController {
                 body.videoUrl = video.url;
             }
             if (filesMap.videoThumbnail && filesMap.videoThumbnail[0]) {
-                const vthumb = await this.uploadService.uploadImage(filesMap.videoThumbnail[0]);
+                const vthumb = await this.uploadService.uploadThumbnail(filesMap.videoThumbnail[0]);
                 body.videoThumbnail = vthumb.url;
             }
 

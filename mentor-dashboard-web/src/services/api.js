@@ -74,6 +74,17 @@ const api = {
     return response.json();
   },
 
+  joinSession: async (bookingId, token) => {
+    const response = await fetch(`${BASE_URL}/mentors/booking/${bookingId}/join`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
   getMentorAvailability: async (token, options = {}) => {
     const params = new URLSearchParams();
     if (options.upcoming) params.append('upcoming', 'true');

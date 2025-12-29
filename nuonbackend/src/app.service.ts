@@ -57,7 +57,7 @@ export class AppService {
                     where: { id: existing.id },
                     data: {
                         password: hashedPassword,
-                        userRole: { connect: { id: adminRole.id } },
+                        roleId: adminRole.id,
                         active: true
                     }
                 });
@@ -65,36 +65,46 @@ export class AppService {
                 console.log('✅ Admin user exists:', adminEmail);
             } else {
                 // Create admin user
+                const adminData: any = {
+                    name: 'System Administrator',
+                    email: adminEmail,
+                    password: hashedPassword,
+                    roleId: adminRole.id,
+                    active: true,
+                    experience: null,
+                    hourlyRate: null,
+                    specialization: null,
+                    qualification: null,
+                    registrationNumber: null,
+                    department: null,
+                    hospital: null,
+                    bio: null,
+                    availability: null,
+                    rating: 0,
+                    reviewCount: 0,
+                    lastLogin: null,
+                    loginAttempts: 0,
+                    city: null,
+                    location: null,
+                    deviceToken: null,
+                    deviceType: null,
+                    appVersion: null,
+                    organization: null,
+                    state: null,
+                    profilePicture: null
+                };
+
+                // Only add adminLevel if the column exists (to avoid schema mismatch errors)
+                try {
+                    await this.prisma.$queryRaw`SELECT adminLevel FROM users LIMIT 1`;
+                    adminData.adminLevel = 'super';
+                } catch (error) {
+                    // Column doesn't exist, skip it
+                    console.log('⚠️ adminLevel column not found, skipping...');
+                }
+
                 const admin = await this.prisma.user.create({
-                    data: {
-                        name: 'System Administrator',
-                        email: adminEmail,
-                        password: hashedPassword,
-                        userRole: { connect: { id: adminRole.id } },
-                        active: true,
-                        experience: null,
-                        hourlyRate: null,
-                        specialization: null,
-                        qualification: null,
-                        registrationNumber: null,
-                        department: null,
-                        hospital: null,
-                        bio: null,
-                        availability: null,
-                        rating: 0,
-                        reviewCount: 0,
-                        adminLevel: 'super',
-                        lastLogin: null,
-                        loginAttempts: 0,
-                        city: null,
-                        location: null,
-                        deviceToken: null,
-                        deviceType: null,
-                        appVersion: null,
-                        organization: null,
-                        state: null,
-                        profilePicture: null
-                    }
+                    data: adminData
                 });
 
                 console.log('🎉 Admin user created:', adminEmail);
@@ -105,10 +115,13 @@ export class AppService {
             console.log('   Password:', adminPassword);
 
             // Also ensure mentor user exists
-            await this.ensureMentorUser();
+            // await this.ensureMentorUser(); // Commented out to remove demo user
 
             // Also ensure nurse role exists
             await this.ensureNurseRole();
+
+            // Also ensure mentor role exists
+            await this.ensureMentorRole();
 
         } catch (err) {
             console.log('⚠️ Unable to ensure admin user:', (err as Error).message);
@@ -154,7 +167,7 @@ export class AppService {
                     where: { id: existing.id },
                     data: {
                         password: hashedPassword,
-                        userRole: { connect: { id: mentorRole.id } },
+                        roleId: mentorRole.id,
                         active: true,
                         isMentor: true,
                         isApproved: true,
@@ -172,7 +185,7 @@ export class AppService {
                     name: 'Demo Mentor',
                     email: mentorEmail,
                     password: hashedPassword,
-                    userRole: { connect: { id: mentorRole.id } },
+                    roleId: mentorRole.id,
                     active: true,
                     isMentor: true,
                     isApproved: true,
@@ -212,6 +225,29 @@ export class AppService {
             }
         } catch (err) {
             console.log('⚠️ Unable to ensure nurse role:', (err as Error).message);
+        }
+    }
+
+    // Ensure a mentor role exists on startup
+    async ensureMentorRole(): Promise<void> {
+        try {
+            console.log('⏳ Checking for mentor role...');
+
+            // Find or create mentor role
+            let mentorRole = await this.prisma.role.findFirst({
+                where: { name: 'mentor' }
+            });
+
+            if (!mentorRole) {
+                mentorRole = await this.prisma.role.create({
+                    data: { name: 'mentor' }
+                });
+                console.log('🎉 Mentor role created');
+            } else {
+                console.log('✅ Mentor role exists');
+            }
+        } catch (err) {
+            console.log('⚠️ Unable to ensure mentor role:', (err as Error).message);
         }
     }
 }

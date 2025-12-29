@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+
+
+import React, { useState, useEffect, useMemo, useContext } from 'react';
 import {
   View,
   Text,
@@ -16,6 +18,9 @@ import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { mentorAPI } from '../api/mentorAPI';
+import { AuthContext } from '../contexts/AuthContext';
+import { checkProfileCompletion } from '../utils/profileUtils';
+import { navigationRef } from '../AppNavigator';
 
 // SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -34,21 +39,87 @@ const alertCircleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" heigh
 const { width } = Dimensions.get('window');
 
 const MentorProfileScreen = ({ route, navigation }) => {
-   const { mentor } = route.params || {};
+   const { mentor, showBooking } = route.params || {};
+   const { user, isProfileComplete } = useContext(AuthContext);
    const [isFavorited, setIsFavorited] = useState(false);
    const [activeTab, setActiveTab] = useState('about');
    const [showProfileModal, setShowProfileModal] = useState(false);
    const [showCompleteLaterModal, setShowCompleteLaterModal] = useState(false);
+   const [showBookingPromptModal, setShowBookingPromptModal] = useState(false);
    const [fetchedMentor, setFetchedMentor] = useState(null);
+   const [availability, setAvailability] = useState([]);
    const [loading, setLoading] = useState(true);
    const [profileComplete, setProfileComplete] = useState(true);
    const [hasShownAlert, setHasShownAlert] = useState(false);
+   const [showBookingSlots, setShowBookingSlots] = useState(showBooking || false);
+   const [selectedDate, setSelectedDate] = useState(null);
+   const [selectedTime, setSelectedTime] = useState(null);
+   const [selectedSlot, setSelectedSlot] = useState(null);
+   const [bookingLoading, setBookingLoading] = useState(false);
+   const [dates, setDates] = useState([]);
+
+  // Construct mentor data from real API data
+  const mentorData = useMemo(() => ({
+    id: fetchedMentor?.id,
+    name: fetchedMentor?.name || 'Unknown Mentor',
+    specialization: fetchedMentor?.specialization || 'General Nursing',
+    experience: `${fetchedMentor?.experience || 0} years`,
+    rating: fetchedMentor?.rating || 0,
+    sessions: fetchedMentor?.totalSessions || 0,
+    image: fetchedMentor?.profilePicture || 'https://via.placeholder.com/150',
+    available: availability.length > 0, // Use real-time availability based on available slots
+    price: fetchedMentor?.hourlyRate || 0,
+    responseTime: 'Within 24 hours', // Default
+    languages: ['English'], // Default
+    qualifications: fetchedMentor?.qualification ? [fetchedMentor.qualification] : [],
+    expertise: [], // Not available in schema
+    bio: fetchedMentor?.bio || 'Experienced nursing professional ready to mentor.',
+    reviews: [], // Not available in basic API
+    achievements: [
+      { icon: 'users', label: `${fetchedMentor?.totalSessions || 0} Sessions` },
+      { icon: 'star', label: `${fetchedMentor?.rating || 0} Rating` },
+    ],
+    availability: availability.length > 0 ? availability.map(slot => `${new Date(slot.startDateTime).toLocaleDateString()} ${new Date(slot.startDateTime).toLocaleTimeString()}`) : ['By appointment'],
+    currentWorkplace: fetchedMentor?.hospital || '',
+    city: fetchedMentor?.city || '',
+    state: fetchedMentor?.state || '',
+    registrationNumber: fetchedMentor?.registrationNumber || '',
+    highestQualification: fetchedMentor?.qualification || '',
+    organization: fetchedMentor?.organization || '',
+    department: fetchedMentor?.department || '',
+    hospital: fetchedMentor?.hospital || '',
+    phoneNumber: fetchedMentor?.phoneNumber || '',
+  }), [fetchedMentor, mentor, availability]);
+
+  // Generate dates for current week and next few weeks
+  const generateDates = () => {
+    const dates = [];
+    const today = new Date();
+    const endDate = new Date();
+    endDate.setMonth(today.getMonth() + 1); // Show dates till next month
+
+    for (let date = new Date(today); date <= endDate; date.setDate(date.getDate() + 1)) {
+      dates.push({
+        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        date: date.getDate(),
+        fullDate: date.toISOString().split('T')[0],
+        month: date.toLocaleDateString('en-US', { month: 'short' }),
+        year: date.getFullYear(),
+        isPast: date < new Date(new Date().setHours(0, 0, 0, 0)),
+      });
+    }
+    return dates;
+  };
 
   useEffect(() => {
     const fetchMentor = async () => {
       try {
-        const data = await mentorAPI.getMentorById(mentor.id);
-        setFetchedMentor(data.mentor);
+        const [mentorData, availabilityData] = await Promise.all([
+          mentorAPI.getMentorById(mentor.id),
+          mentorAPI.fetchMentorAvailability(mentor.id)
+        ]);
+        setFetchedMentor(mentorData.mentor);
+        setAvailability(availabilityData.slots || []);
       } catch (error) {
         console.error('Error fetching mentor:', error);
       } finally {
@@ -57,49 +128,20 @@ const MentorProfileScreen = ({ route, navigation }) => {
     };
     if (mentor) {
       fetchMentor();
+      setDates(generateDates());
     }
   }, [mentor]);
+
 
   if (!mentor || loading || !fetchedMentor) {
     return (
       <View style={styles.center}>
-        <Text style={{ color: '#fff' }}>{!mentor ? 'Mentor not found.' : 'Loading...'}</Text>
+        <Text style={{ color: '#fff' }}>
+          {!mentor ? 'Mentor not found.' : 'Loading...'}
+        </Text>
       </View>
     );
   }
-
-  // Construct mentor data from real API data
-  const mentorData = {
-    id: fetchedMentor.id,
-    name: fetchedMentor.name || 'Unknown Mentor',
-    specialization: fetchedMentor.specialization || 'General Nursing',
-    experience: `${fetchedMentor.experience || 0} years`,
-    rating: fetchedMentor.rating || 0,
-    sessions: fetchedMentor.totalSessions || 0,
-    image: fetchedMentor.profilePicture || 'https://via.placeholder.com/150',
-    available: mentor.available || false, // Use actual availability from mentor data
-    price: fetchedMentor.hourlyRate || 0,
-    responseTime: 'Within 24 hours', // Default
-    languages: ['English'], // Default
-    qualifications: fetchedMentor.qualification ? [fetchedMentor.qualification] : [],
-    expertise: [], // Not available in schema
-    bio: fetchedMentor.bio || 'Experienced nursing professional ready to mentor.',
-    reviews: [], // Not available in basic API
-    achievements: [
-      { icon: 'users', label: `${fetchedMentor.totalSessions || 0} Sessions` },
-      { icon: 'star', label: `${fetchedMentor.rating || 0} Rating` },
-    ],
-    availability: fetchedMentor.availability ? [fetchedMentor.availability] : ['By appointment'],
-    currentWorkplace: fetchedMentor.hospital || '',
-    city: fetchedMentor.city || '',
-    state: fetchedMentor.state || '',
-    registrationNumber: fetchedMentor.registrationNumber || '',
-    highestQualification: fetchedMentor.qualification || '',
-    organization: fetchedMentor.organization || '',
-    department: fetchedMentor.department || '',
-    hospital: fetchedMentor.hospital || '',
-    phoneNumber: fetchedMentor.phoneNumber || '',
-  };
 
   const handleShare = async () => {
     try {
@@ -111,27 +153,117 @@ const MentorProfileScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleBookSession = async (mentor) => {
-    try {
-      const profile = await AsyncStorage.getItem('nurseProfile');
-      const profileData = profile ? JSON.parse(profile) : null;
+  // Get available time slots for selected date
+  const getTimeSlotsForDate = (dateString) => {
+    if (mentorData.price == 0) {
+      // For free mentors, return default time slots
+      return [
+        { id: 'free1', time: '10:00 AM', status: 'available', slot: { duration: 45, price: 0, startDateTime: new Date(`${dateString}T10:00:00`).toISOString() } },
+        { id: 'free2', time: '10:45 AM', status: 'available', slot: { duration: 45, price: 0, startDateTime: new Date(`${dateString}T10:45:00`).toISOString() } },
+      ];
+    }
 
-      // Check if profile is incomplete
-      if (!profileData ||
-          !profileData.fullName ||
-          !profileData.email ||
-          !profileData.workplace ||
-          !profileData.registrationNumber ||
-          !profileData.qualification) {
+    const slotsForDate = availability.filter(slot => {
+      const slotDate = new Date(slot.startDateTime).toISOString().split('T')[0];
+      return slotDate === dateString && slot.isActive && slot.currentBookings < slot.maxBookings;
+    });
+
+    return slotsForDate.map(slot => ({
+      id: slot.id,
+      time: new Date(slot.startDateTime).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }),
+      status: 'available',
+      slot: slot
+    }));
+  };
+
+  const handleBookSession = async mentor => {
+    console.log('handleBookSession called with mentor:', mentor);
+    try {
+      // Check if user is logged in
+      if (!user) {
+        console.log('User not logged in');
+        Alert.alert('Login Required', 'Please login to book a session.');
+        navigation.navigate('Login');
+        return;
+      }
+
+      // Check profile completion using centralized utility
+      const profileStatus = await checkProfileCompletion();
+      console.log('Profile status:', profileStatus);
+      if (profileStatus.profileIncomplete) {
+        console.log('Profile incomplete');
         setShowProfileModal(true);
         return;
       }
 
-      // Profile is complete, go directly to booking
-      navigation.navigate('BookingSlots', { mentor });
+      // Profile is complete, navigate to booking slots screen
+      console.log('Navigating to BookingSlots');
+      navigationRef.current?.navigate('BookingSlots', { mentor: mentorData });
     } catch (error) {
       console.error('Error checking profile:', error);
       setShowProfileModal(true); // Show modal on error
+    }
+  };
+
+  const handleDateSelect = (date) => {
+    setSelectedDate(date.fullDate);
+    setSelectedTime(null);
+    setSelectedSlot(null);
+  };
+
+  const handleTimeSelect = (slot) => {
+    setSelectedTime(slot.time);
+    setSelectedSlot(slot.slot);
+  };
+
+  const handleProceedToPayment = async () => {
+    if (!selectedSlot) {
+      Alert.alert('Selection Required', 'Please select a time slot for your session.');
+      return;
+    }
+
+    try {
+      setBookingLoading(true);
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        Alert.alert('Authentication Required', 'Please login to book a session.');
+        return;
+      }
+
+      // Book the session
+      const bookingResult = await mentorAPI.bookSession({
+        availabilityId: selectedSlot.id
+      }, token);
+
+      if (bookingResult.success) {
+        const isFreeMentor = mentorData.price == 0;
+        if (isFreeMentor) {
+          // For free mentors, show success and navigate back
+          Alert.alert('Request Sent', 'Your session request has been sent to the mentor. You will be notified once accepted.', [
+            { text: 'OK', onPress: () => navigation.goBack() }
+          ]);
+        } else {
+          navigation.navigate('Payment', {
+            mentor: mentorData,
+            bookingDetails: {
+              slot: selectedSlot,
+              booking: bookingResult.booking,
+              price: selectedSlot.price || mentorData.price
+            }
+          });
+        }
+      } else {
+        Alert.alert('Booking Failed', bookingResult.message || 'Failed to book session');
+      }
+    } catch (error) {
+      console.error('Error booking session:', error);
+      Alert.alert('Error', 'Failed to book session. Please try again.');
+    } finally {
+      setBookingLoading(false);
     }
   };
 
@@ -143,7 +275,12 @@ const MentorProfileScreen = ({ route, navigation }) => {
             <View style={styles.card}>
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <SvgXml xml={usersSvg} width={20} height={20} color="#7c3aed" />
+                  <SvgXml
+                    xml={usersSvg}
+                    width={20}
+                    height={20}
+                    color="#7c3aed"
+                  />
                   <Text style={styles.sectionTitle}>About</Text>
                 </View>
                 <Text style={styles.bioText}>{mentorData.bio}</Text>
@@ -153,14 +290,24 @@ const MentorProfileScreen = ({ route, navigation }) => {
             <View style={styles.card}>
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <SvgXml xml={awardSvg} width={20} height={20} color="#7c3aed" />
+                  <SvgXml
+                    xml={awardSvg}
+                    width={20}
+                    height={20}
+                    color="#7c3aed"
+                  />
                   <Text style={styles.sectionTitle}>Qualifications</Text>
                 </View>
                 {mentorData.qualifications.length > 0 && (
                   <>
                     {mentorData.qualifications.map((qual, index) => (
                       <View key={index} style={styles.qualification}>
-                        <SvgXml xml={checkCircleSvg} width={20} height={20} color="#10b981" />
+                        <SvgXml
+                          xml={checkCircleSvg}
+                          width={20}
+                          height={20}
+                          color="#10b981"
+                        />
                         <Text style={styles.qualificationText}>{qual}</Text>
                       </View>
                     ))}
@@ -172,11 +319,18 @@ const MentorProfileScreen = ({ route, navigation }) => {
             <View style={styles.card}>
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <SvgXml xml={clockSvg} width={20} height={20} color="#7c3aed" />
+                  <SvgXml
+                    xml={clockSvg}
+                    width={20}
+                    height={20}
+                    color="#7c3aed"
+                  />
                   <Text style={styles.sectionTitle}>Availability</Text>
                 </View>
                 {mentorData.availability.map((time, index) => (
-                  <Text key={index} style={styles.availabilityText}>{time}</Text>
+                  <Text key={index} style={styles.availabilityText}>
+                    {time}
+                  </Text>
                 ))}
               </View>
             </View>
@@ -197,31 +351,44 @@ const MentorProfileScreen = ({ route, navigation }) => {
             <View style={styles.card}>
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <SvgXml xml={rupeeSvg} width={20} height={20} color="#7c3aed" />
+                  <SvgXml
+                    xml={rupeeSvg}
+                    width={20}
+                    height={20}
+                    color="#7c3aed"
+                  />
                   <Text style={styles.sectionTitle}>Professional Details</Text>
                 </View>
                 {mentorData.currentWorkplace && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Current Workplace:</Text>
-                    <Text style={styles.detailValue}>{mentorData.currentWorkplace}</Text>
+                    <Text style={styles.detailValue}>
+                      {mentorData.currentWorkplace}
+                    </Text>
                   </View>
                 )}
                 {mentorData.organization && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Organization:</Text>
-                    <Text style={styles.detailValue}>{mentorData.organization}</Text>
+                    <Text style={styles.detailValue}>
+                      {mentorData.organization}
+                    </Text>
                   </View>
                 )}
                 {mentorData.hospital && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Hospital:</Text>
-                    <Text style={styles.detailValue}>{mentorData.hospital}</Text>
+                    <Text style={styles.detailValue}>
+                      {mentorData.hospital}
+                    </Text>
                   </View>
                 )}
                 {mentorData.department && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Department:</Text>
-                    <Text style={styles.detailValue}>{mentorData.department}</Text>
+                    <Text style={styles.detailValue}>
+                      {mentorData.department}
+                    </Text>
                   </View>
                 )}
                 {mentorData.city && (
@@ -239,19 +406,27 @@ const MentorProfileScreen = ({ route, navigation }) => {
                 {mentorData.registrationNumber && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Registration Number:</Text>
-                    <Text style={styles.detailValue}>{mentorData.registrationNumber}</Text>
+                    <Text style={styles.detailValue}>
+                      {mentorData.registrationNumber}
+                    </Text>
                   </View>
                 )}
                 {mentorData.highestQualification && (
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Highest Qualification:</Text>
-                    <Text style={styles.detailValue}>{mentorData.highestQualification}</Text>
+                    <Text style={styles.detailLabel}>
+                      Highest Qualification:
+                    </Text>
+                    <Text style={styles.detailValue}>
+                      {mentorData.highestQualification}
+                    </Text>
                   </View>
                 )}
                 {mentorData.phoneNumber && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Phone Number:</Text>
-                    <Text style={styles.detailValue}>{mentorData.phoneNumber}</Text>
+                    <Text style={styles.detailValue}>
+                      {mentorData.phoneNumber}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -266,7 +441,12 @@ const MentorProfileScreen = ({ route, navigation }) => {
               {mentorData.expertise.map((skill, index) => (
                 <View key={index} style={styles.expertiseItem}>
                   <View style={styles.expertiseIcon}>
-                    <SvgXml xml={checkCircleSvg} width={16} height={16} color="white" />
+                    <SvgXml
+                      xml={checkCircleSvg}
+                      width={16}
+                      height={16}
+                      color="white"
+                    />
                   </View>
                   <Text style={styles.expertiseText}>{skill}</Text>
                 </View>
@@ -276,13 +456,23 @@ const MentorProfileScreen = ({ route, navigation }) => {
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Session Focus</Text>
               <Text style={styles.sectionText}>
-                My mentorship sessions are designed to provide practical, actionable guidance for nurses looking to excel in critical care environments. I focus on:
+                My mentorship sessions are designed to provide practical,
+                actionable guidance for nurses looking to excel in critical care
+                environments. I focus on:
               </Text>
               <View style={styles.focusList}>
-                <Text style={styles.focusItem}>• Real-world clinical scenarios and problem-solving</Text>
-                <Text style={styles.focusItem}>• Career advancement strategies in critical care</Text>
-                <Text style={styles.focusItem}>• Building confidence in high-pressure situations</Text>
-                <Text style={styles.focusItem}>• Best practices and latest protocols</Text>
+                <Text style={styles.focusItem}>
+                  • Real-world clinical scenarios and problem-solving
+                </Text>
+                <Text style={styles.focusItem}>
+                  • Career advancement strategies in critical care
+                </Text>
+                <Text style={styles.focusItem}>
+                  • Building confidence in high-pressure situations
+                </Text>
+                <Text style={styles.focusItem}>
+                  • Best practices and latest protocols
+                </Text>
               </View>
             </View>
           </View>
@@ -296,26 +486,67 @@ const MentorProfileScreen = ({ route, navigation }) => {
                 <View style={styles.leftRating}>
                   <Text style={styles.overallRating}>{mentorData.rating}</Text>
                   <View style={styles.starsContainer}>
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <SvgXml key={star} xml={starSvg} width={20} height={20} color="#F59E0B" fill="#F59E0B" />
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <SvgXml
+                        key={star}
+                        xml={starSvg}
+                        width={20}
+                        height={20}
+                        color="#F59E0B"
+                        fill="#F59E0B"
+                      />
                     ))}
                   </View>
                   <View style={styles.iconContainer}>
-                    <SvgXml xml={calendarSvg} width={20} height={20} color="#7c3aed" />
-                    <SvgXml xml={calendarSvg} width={20} height={20} color="#7c3aed" />
+                    <SvgXml
+                      xml={calendarSvg}
+                      width={20}
+                      height={20}
+                      color="#7c3aed"
+                    />
+                    <SvgXml
+                      xml={calendarSvg}
+                      width={20}
+                      height={20}
+                      color="#7c3aed"
+                    />
                   </View>
-                  <Text style={styles.totalSessions}>{mentorData.sessions} sessions</Text>
+                  <Text style={styles.totalSessions}>
+                    {mentorData.sessions} sessions
+                  </Text>
                 </View>
                 <View style={styles.rightRating}>
-                  <Text style={styles.ratingBreakdownTitle}>Rating Breakdown</Text>
-                  {[5, 4, 3, 2, 1].map((rating) => (
+                  <Text style={styles.ratingBreakdownTitle}>
+                    Rating Breakdown
+                  </Text>
+                  {[5, 4, 3, 2, 1].map(rating => (
                     <View key={rating} style={styles.ratingBar}>
                       <Text style={styles.ratingLabel}>{rating}★</Text>
                       <View style={styles.barContainer}>
-                        <View style={[styles.barFill, {
-                          width: `${rating === 5 ? 80 : rating === 4 ? 15 : rating === 3 ? 3 : rating === 2 ? 1 : 0}%`,
-                          backgroundColor: rating >= 4 ? '#10b981' : rating >= 3 ? '#f59e0b' : '#ef4444'
-                        }]} />
+                        <View
+                          style={[
+                            styles.barFill,
+                            {
+                              width: `${
+                                rating === 5
+                                  ? 80
+                                  : rating === 4
+                                  ? 15
+                                  : rating === 3
+                                  ? 3
+                                  : rating === 2
+                                  ? 1
+                                  : 0
+                              }%`,
+                              backgroundColor:
+                                rating >= 4
+                                  ? '#10b981'
+                                  : rating >= 3
+                                  ? '#f59e0b'
+                                  : '#ef4444',
+                            },
+                          ]}
+                        />
                       </View>
                     </View>
                   ))}
@@ -329,22 +560,36 @@ const MentorProfileScreen = ({ route, navigation }) => {
                 <View style={styles.reviewHeader}>
                   <View style={styles.reviewerInfo}>
                     {review.image ? (
-                      <Image source={{ uri: review.image }} style={styles.reviewerImage} />
+                      <Image
+                        source={{ uri: review.image }}
+                        style={styles.reviewerImage}
+                      />
                     ) : (
                       <View style={styles.reviewerPlaceholder}>
-                        <Text style={styles.reviewerInitial}>{review.name.charAt(0)}</Text>
+                        <Text style={styles.reviewerInitial}>
+                          {review.name.charAt(0)}
+                        </Text>
                       </View>
                     )}
                     <View style={styles.reviewerDetails}>
                       <View style={styles.nameDateRow}>
                         <Text style={styles.reviewerName}>{review.name}</Text>
-                        <Text style={styles.reviewDateInline}>{review.date}</Text>
+                        <Text style={styles.reviewDateInline}>
+                          {review.date}
+                        </Text>
                       </View>
                       {index === 0 && (
                         // First review (Neha Sharma) - stars below name and date
                         <View style={styles.firstReviewStars}>
                           {[...Array(review.rating)].map((_, i) => (
-                            <SvgXml key={i} xml={starSvg} width={12} height={12} color="#F59E0B" fill="#F59E0B" />
+                            <SvgXml
+                              key={i}
+                              xml={starSvg}
+                              width={12}
+                              height={12}
+                              color="#F59E0B"
+                              fill="#F59E0B"
+                            />
                           ))}
                         </View>
                       )}
@@ -353,7 +598,14 @@ const MentorProfileScreen = ({ route, navigation }) => {
                   {index !== 0 && (
                     <View style={styles.reviewStars}>
                       {[...Array(review.rating)].map((_, i) => (
-                        <SvgXml key={i} xml={starSvg} width={14} height={14} color="#F59E0B" fill="#F59E0B" />
+                        <SvgXml
+                          key={i}
+                          xml={starSvg}
+                          width={14}
+                          height={14}
+                          color="#F59E0B"
+                          fill="#F59E0B"
+                        />
                       ))}
                     </View>
                   )}
@@ -369,265 +621,415 @@ const MentorProfileScreen = ({ route, navigation }) => {
   };
 
   return (
-    <LinearGradient colors={['#faf5ff', '#fdf2f8', '#fff']} style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.contentContainer, {paddingTop: 0}]}>
-      {/* Header */}
-      <LinearGradient
-        colors={['#7c3aed', '#ec4899', '#ea580c']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.header}
+    <LinearGradient
+      colors={['#faf5ff', '#fdf2f8', '#fff']}
+      style={styles.container}
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.contentContainer, { paddingTop: 0 }]}
       >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backBtn}
-          >
-            <SvgXml xml={chevronLeftSvg} width={24} height={24} color="white" />
-          </TouchableOpacity>
-          <View style={styles.headerActions}>
+        {/* Header */}
+        <LinearGradient
+          colors={['#7c3aed', '#ec4899', '#ea580c']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.header}
+        >
+          <View style={styles.headerContent}>
             <TouchableOpacity
-              onPress={handleShare}
-              style={styles.actionBtn}
+              onPress={() => navigation.goBack()}
+              style={styles.backBtn}
             >
-              <SvgXml xml={shareSvg} width={20} height={20} color="white" />
+              <SvgXml
+                xml={chevronLeftSvg}
+                width={24}
+                height={24}
+                color="white"
+              />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setIsFavorited(!isFavorited)}
-              style={styles.actionBtn}
-            >
-              <SvgXml xml={heartSvg} width={20} height={20} color={isFavorited ? '#dc2626' : 'white'} fill={isFavorited ? '#dc2626' : 'none'} />
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={handleShare} style={styles.actionBtn}>
+                <SvgXml xml={shareSvg} width={20} height={20} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setIsFavorited(!isFavorited)}
+                style={styles.actionBtn}
+              >
+                <SvgXml
+                  xml={heartSvg}
+                  width={20}
+                  height={20}
+                  color={isFavorited ? '#dc2626' : 'white'}
+                  fill={isFavorited ? '#dc2626' : 'none'}
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <Text style={styles.headerTitle}>Mentor Profile</Text>
+        </LinearGradient>
+
+        {/* Profile Card */}
+        <View style={styles.profileCardContainer}>
+          <View style={styles.profileCard}>
+            <View style={styles.profileInfo}>
+              <View style={styles.profileImageContainer}>
+                <ImageWithFallback
+                  src={mentorData.image}
+                  alt={mentorData.name}
+                  style={styles.profileImage}
+                />
+              </View>
+              <View style={styles.profileDetails}>
+                <Text style={styles.profileName}>{mentorData.name}</Text>
+                <Text style={styles.profileSpecialty}>
+                  {mentorData.specialization}
+                </Text>
+                <View style={styles.profileStats}>
+                  <SvgXml
+                    xml={starSvg}
+                    width={16}
+                    height={16}
+                    color="#fbbf24"
+                    fill="#fbbf24"
+                  />
+                  <Text style={styles.ratingText}>{mentorData.rating}</Text>
+                  <Text style={styles.dot}>•</Text>
+                  <Text style={styles.sessionsText}>
+                    {mentorData.sessions} sessions
+                  </Text>
+                </View>
+
+                <View style={styles.availabilityContainer}>
+                  <View style={styles.availabilityBadge}>
+                    <Text style={styles.availabilityText}>Available</Text>
+                  </View>
+                  <View style={styles.experienceBadge}>
+                    <Text style={styles.experienceText}>15+ years</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.achievements}>
+              <View style={styles.achievementIconContainer}>
+                <SvgXml xml={awardSvg} width={16} height={16} color="#7c3aed" />
+              </View>
+              <View style={styles.achievementIconContainer}>
+                <SvgXml xml={clockSvg} width={16} height={16} color="#7c3aed" />
+              </View>
+              <View style={styles.achievementIconContainer}>
+                <SvgXml xml={starSvg} width={16} height={16} color="#7c3aed" />
+              </View>
+
+              <View style={styles.achievementIconContainer}>
+                <SvgXml xml={usersSvg} width={16} height={16} color="#7c3aed" />
+              </View>
+            </View>
+
+            <View style={styles.quickStats}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{mentorData.rating}</Text>
+                <Text style={styles.statLabel}>Rating</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{mentorData.sessions}+</Text>
+                <Text style={styles.statLabel}>Sessions</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{mentorData.responseTime}</Text>
+                <Text style={styles.statLabel}>Response</Text>
+              </View>
+            </View>
+
+            <View style={styles.additionalInfo}>
+              <View style={styles.bookSessionContainer}>
+                <LinearGradient
+                  colors={['#7c3aed', '#ec4899', '#ea580c']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.bookSessionBtn, !mentorData.available && styles.disabledBtn]}
+                >
+                  <TouchableOpacity
+                    style={styles.bookSessionBtnInner}
+                    onPress={() => mentorData.available && handleBookSession(mentorData)}
+                    disabled={!mentorData.available}
+                  >
+                    <SvgXml
+                      xml={calendarSvg}
+                      width={20}
+                      height={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.bookSessionText}>
+                      {mentorData.available ? 'Book Session' : 'Book Session'}
+                    </Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+              <View style={styles.sessionCard}>
+                <SvgXml xml={videoSvg} width={20} height={20} color="#7c3aed" />
+                <Text style={styles.sessionText}>45-minute video session</Text>
+                <Text style={styles.sessionPrice}>₹{mentorData.price}</Text>
+              </View>
+            </View>
           </View>
         </View>
-        <Text style={styles.headerTitle}>Mentor Profile</Text>
-      </LinearGradient>
 
-      {/* Profile Card */}
-      <View style={styles.profileCardContainer}>
-        <View style={styles.profileCard}>
-          <View style={styles.profileInfo}>
-            <View style={styles.profileImageContainer}>
-              <ImageWithFallback
-                src={mentorData.image}
-                alt={mentorData.name}
-                style={styles.profileImage}
-              />
-            </View>
-            <View style={styles.profileDetails}>
-              <Text style={styles.profileName}>{mentorData.name}</Text>
-              <Text style={styles.profileSpecialty}>{mentorData.specialization}</Text>
-              <View style={styles.profileStats}>
-                <SvgXml xml={starSvg} width={16} height={16} color="#fbbf24" fill="#fbbf24" />
-                <Text style={styles.ratingText}>{mentorData.rating}</Text>
-                <Text style={styles.dot}>•</Text>
-                <Text style={styles.sessionsText}>{mentorData.sessions} sessions</Text>
+        {/* Tabs */}
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'about' && styles.activeTab]}
+            onPress={() => setActiveTab('about')}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'about' && styles.activeTabText,
+              ]}
+            >
+              About
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'expertise' && styles.activeTab]}
+            onPress={() => setActiveTab('expertise')}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'expertise' && styles.activeTabText,
+              ]}
+            >
+              Expertise
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'reviews' && styles.activeTab]}
+            onPress={() => setActiveTab('reviews')}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'reviews' && styles.activeTabText,
+              ]}
+            >
+              Reviews
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {renderTabContent()}
+
+        {/* Profile Incomplete Modal */}
+        <Modal
+          visible={showProfileModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowProfileModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.profileModalContent}>
+              {/* Alert Icon */}
+              <View style={styles.alertIconContainer}>
+                <SvgXml
+                  xml={alertCircleSvg}
+                  width={24}
+                  height={24}
+                  color="#EA580C"
+                />
               </View>
-             
-              <View style={styles.availabilityContainer}>
-                <View style={styles.availabilityBadge}>
-                  <Text style={styles.availabilityText}>Available</Text>
+
+              {/* Title */}
+              <Text style={styles.profileModalTitle}>
+                Complete Your Profile
+              </Text>
+
+              {/* Description */}
+              <Text style={styles.profileModalDescription}>
+                {mentorData.price === 0 || mentorData.price === '0'
+                  ? 'Complete your profile to unlock premium mentorship features and get the best experience.'
+                  : 'Please complete your professional information to book paid mentorship sessions. Free sessions are available without profile completion.'}
+              </Text>
+
+              {/* Missing Information Box */}
+              {mentorData.price !== 0 && mentorData.price !== '0' && (
+                <View style={styles.missingInfoBox}>
+                  <Text style={styles.missingInfoLabel}>
+                    Missing information:
+                  </Text>
+                  <View style={styles.bulletList}>
+                    <Text style={styles.bulletItem}>• Current Workplace</Text>
+                    <Text style={styles.bulletItem}>
+                      • Nursing Registration Number
+                    </Text>
+                    <Text style={styles.bulletItem}>
+                      • Highest Qualification
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.experienceBadge}>
-                  <Text style={styles.experienceText}>15+ years</Text>
-                </View>
-              </View>
-            </View>
-          </View>
+              )}
 
-          <View style={styles.achievements}>
-            <View style={styles.achievementIconContainer}>
-              <SvgXml xml={awardSvg} width={16} height={16} color="#7c3aed" />
-            </View>
-            <View style={styles.achievementIconContainer}>
-              <SvgXml xml={clockSvg} width={16} height={16} color="#7c3aed" />
-            </View>
-            <View style={styles.achievementIconContainer}>
-              <SvgXml xml={starSvg} width={16} height={16} color="#7c3aed" />
-            </View>
-
-            <View style={styles.achievementIconContainer}>
-              <SvgXml xml={usersSvg} width={16} height={16} color="#7c3aed" />
-            </View>
-          </View>
-
-          <View style={styles.quickStats}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{mentorData.rating}</Text>
-              <Text style={styles.statLabel}>Rating</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{mentorData.sessions}+</Text>
-              <Text style={styles.statLabel}>Sessions</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{mentorData.responseTime}</Text>
-              <Text style={styles.statLabel}>Response</Text>
-            </View>
-          </View>
-          
-          <View style={styles.additionalInfo}>
-            <View style={styles.bookSessionContainer}>
+              {/* Complete Profile Button */}
               <LinearGradient
-                colors={mentorData.available ? ['#7c3aed', '#ec4899', '#ea580c'] : ['#9ca3af', '#6b7280']}
+                colors={['#3b82f6', '#7c3aed']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
-                style={[styles.bookSessionBtn, !mentorData.available && styles.disabledBtn]}
+                style={styles.completeProfileBtn}
               >
                 <TouchableOpacity
-                  style={styles.bookSessionBtnInner}
-                  onPress={() => mentorData.available && handleBookSession(mentorData)}
-                  disabled={!mentorData.available}
+                  style={styles.completeProfileBtnInner}
+                  onPress={() => {
+                    setShowProfileModal(false);
+                    navigation.navigate('ProfileSetupScreen');
+                  }}
                 >
-                  <SvgXml xml={calendarSvg} width={20} height={20} color="#fff" />
-                  <Text style={styles.bookSessionText}>
-                    {mentorData.available ? 'Book Session' : 'Unavailable'}
+                  <Text style={styles.completeProfileBtnText}>
+                    Complete Profile Now →
                   </Text>
                 </TouchableOpacity>
               </LinearGradient>
-            </View>
-            <View style={styles.sessionCard}>
-              <SvgXml xml={videoSvg} width={20} height={20} color="#7c3aed" />
-              <Text style={styles.sessionText}>45-minute video session</Text>
-              <Text style={styles.sessionPrice}>₹{mentorData.price}</Text>
-            </View>
-          </View>
 
-
-        </View>
-      </View>
-
-      {/* Tabs */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'about' && styles.activeTab]}
-          onPress={() => setActiveTab('about')}
-        >
-          <Text style={[styles.tabText, activeTab === 'about' && styles.activeTabText]}>
-            About
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'expertise' && styles.activeTab]}
-          onPress={() => setActiveTab('expertise')}
-        >
-          <Text style={[styles.tabText, activeTab === 'expertise' && styles.activeTabText]}>
-            Expertise
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'reviews' && styles.activeTab]}
-          onPress={() => setActiveTab('reviews')}
-        >
-          <Text style={[styles.tabText, activeTab === 'reviews' && styles.activeTabText]}>
-            Reviews
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-
-      {renderTabContent()}
-
-
-      {/* Profile Incomplete Modal */}
-      <Modal
-        visible={showProfileModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowProfileModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.profileModalContent}>
-            {/* Alert Icon */}
-            <View style={styles.alertIconContainer}>
-              <SvgXml xml={alertCircleSvg} width={24} height={24} color="#EA580C" />
-            </View>
-
-            {/* Title */}
-            <Text style={styles.profileModalTitle}>Complete Your Profile</Text>
-
-            {/* Description */}
-            <Text style={styles.profileModalDescription}>
-              Please complete your professional information to book mentorship sessions.
-              This helps us provide you with the best experience.
-            </Text>
-
-            {/* Missing Information Box */}
-            <View style={styles.missingInfoBox}>
-              <Text style={styles.missingInfoLabel}>Missing information:</Text>
-              <View style={styles.bulletList}>
-                <Text style={styles.bulletItem}>• Current Workplace</Text>
-                <Text style={styles.bulletItem}>• Nursing Registration Number</Text>
-                <Text style={styles.bulletItem}>• Highest Qualification</Text>
-              </View>
-            </View>
-
-            {/* Complete Profile Button */}
-            <LinearGradient
-              colors={['#3b82f6', '#7c3aed']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.completeProfileBtn}
-            >
+              {/* Maybe Later / Book Free Session */}
               <TouchableOpacity
-                style={styles.completeProfileBtnInner}
                 onPress={() => {
                   setShowProfileModal(false);
-                  navigation.navigate('ProfileSetupScreen');
+                  navigation.navigate('BookingSlots', {
+                    mentor: mentorData,
+                    skipProfileCheck: true,
+                  });
                 }}
               >
-                <Text style={styles.completeProfileBtnText}>Complete Profile Now →</Text>
-              </TouchableOpacity>
-            </LinearGradient>
-
-            {/* Maybe Later */}
-            <TouchableOpacity
-              onPress={() => {
-                setShowProfileModal(false);
-                navigation.navigate('BookingSlots', { mentor: mentorData, skipProfileCheck: true });
-              }}
-            >
-              <Text style={styles.maybeLaterText}>Maybe Later</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Complete Later Modal */}
-      <Modal
-        visible={showCompleteLaterModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowCompleteLaterModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Complete Later</Text>
-            <Text style={styles.modalMessage}>
-              You can complete the booking process later. Click below to proceed to select your preferred date and time for the session.
-            </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setShowCompleteLaterModal(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.completeButton]}
-                onPress={() => {
-                  setShowCompleteLaterModal(false);
-                  navigation.navigate('BookingSlots', { mentor: mentorData, skipProfileCheck: true });
-                }}
-              >
-                <Text style={styles.completeButtonText}>Complete Later</Text>
+                <Text style={styles.maybeLaterText}>
+                  {mentorData.price === 0 || mentorData.price === '0'
+                    ? 'Book Free Session'
+                    : 'Maybe Later'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+
+        {/* Complete Later Modal */}
+        <Modal
+          visible={showCompleteLaterModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCompleteLaterModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Complete Later</Text>
+              <Text style={styles.modalMessage}>
+                You can complete the booking process later. Click below to
+                proceed to select your preferred date and time for the session.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => setShowCompleteLaterModal(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.completeButton]}
+                  onPress={() => {
+                    setShowCompleteLaterModal(false);
+                    navigation.navigate('BookingSlots', {
+                      mentor: mentorData,
+                      skipProfileCheck: true,
+                    });
+                  }}
+                >
+                  <Text style={styles.completeButtonText}>Complete Later</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Booking Prompt Modal */}
+        <Modal
+          visible={showBookingPromptModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowBookingPromptModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.bookingPromptModalContent}>
+              {/* Header with mentor info */}
+              <View style={styles.bookingPromptHeader}>
+                <View style={styles.bookingPromptMentorInfo}>
+                  <View style={styles.bookingPromptMentorImage}>
+                    <Text style={styles.bookingPromptMentorInitial}>
+                      {mentorData.name?.charAt(0) || 'M'}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={styles.bookingPromptMentorName}>
+                      {mentorData.name}
+                    </Text>
+                    <Text style={styles.bookingPromptMentorSpecialty}>
+                      {mentorData.specialization}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.bookingPromptSessionInfo}>
+                  <Text style={styles.bookingPromptSessionFee}>
+                    ₹{mentorData.price}
+                  </Text>
+                  <Text style={styles.bookingPromptSessionDuration}>
+                    45 min session
+                  </Text>
+                </View>
+              </View>
+
+              {/* Booking details */}
+              <View style={styles.bookingPromptDetails}>
+                <Text style={styles.bookingPromptTitle}>
+                  Ready to Book Your Session?
+                </Text>
+                <Text style={styles.bookingPromptDescription}>
+                  {mentorData.price === 0 || mentorData.price === '0'
+                    ? 'This is a free mentorship session. You can proceed to select your preferred date and time.'
+                    : 'Great! Your profile is complete. You can now proceed to select your preferred date and time for the session.'}
+                </Text>
+              </View>
+
+              {/* Action buttons */}
+              <View style={styles.bookingPromptActions}>
+                <TouchableOpacity
+                  style={styles.bookingPromptCancelBtn}
+                  onPress={() => setShowBookingPromptModal(false)}
+                >
+                  <Text style={styles.bookingPromptCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <LinearGradient
+                  colors={['#7c3aed', '#ec4899', '#ea580c']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.bookingPromptBookBtn}
+                >
+                  <TouchableOpacity
+                    style={styles.bookingPromptBookBtnInner}
+                    onPress={() => {
+                      setShowBookingPromptModal(false);
+                      navigation.navigate('BookingSlots', {
+                        mentor: mentorData,
+                      });
+                    }}
+                  >
+                    <Text style={styles.bookingPromptBookText}>
+                      Select Date & Time
+                    </Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
 
       <View style={styles.bottomBar}>
@@ -639,7 +1041,7 @@ const MentorProfileScreen = ({ route, navigation }) => {
             </View>
           </View>
           <LinearGradient
-            colors={mentorData.available ? ['#7c3aed', '#ec4899', '#ea580c'] : ['#9ca3af', '#6b7280']}
+            colors={['#7c3aed', '#ec4899', '#ea580c']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[styles.bookNowBtn, !mentorData.available && styles.disabledBtn]}
@@ -651,7 +1053,7 @@ const MentorProfileScreen = ({ route, navigation }) => {
             >
               <SvgXml xml={calendarSvg} width={20} height={20} color="#fff" />
               <Text style={styles.bookNowText}>
-                {mentorData.available ? 'Book Now' : 'Unavailable'}
+                {mentorData.available ? 'Book Now' : 'Book Now'}
               </Text>
             </TouchableOpacity>
           </LinearGradient>
@@ -661,11 +1063,15 @@ const MentorProfileScreen = ({ route, navigation }) => {
   );
 };
 
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   contentContainer: { paddingBottom: 120 }, // Space for bottom bar
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+  },
   header: {
     paddingTop: 20,
     paddingBottom: 40,
@@ -697,8 +1103,17 @@ const styles = StyleSheet.create({
   },
   actionIcon: { fontSize: 18 },
   favorited: { color: '#FF6B6B' },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
-  profileCardContainer: { paddingHorizontal: 20, marginTop: -20, marginBottom: 20 },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  profileCardContainer: {
+    paddingHorizontal: 20,
+    marginTop: -20,
+    marginBottom: 20,
+  },
   profileCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -713,7 +1128,17 @@ const styles = StyleSheet.create({
   },
   profileInfo: { flexDirection: 'row', marginBottom: 10 },
   profileImageContainer: { marginRight: 16 },
-  profileImage: { width: 96, height: 96, borderRadius: 16, borderWidth: 4, borderColor: '#e9d5ff', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15, elevation: 3 },
+  profileImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 16,
+    borderWidth: 4,
+    borderColor: '#e9d5ff',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 3,
+  },
   profileImagePlaceholder: {
     width: 80,
     height: 80,
@@ -724,7 +1149,12 @@ const styles = StyleSheet.create({
   },
   profileImageText: { fontSize: 32, fontWeight: 'bold', color: '#6B7280' },
   profileDetails: { flex: 1 },
-  profileName: { fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 8 },
+  profileName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
   profileSpecialty: { fontSize: 16, color: '#6b7280', marginBottom: 8 },
   profileStats: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   sessionFeeContainer: { marginBottom: 8 },
@@ -784,7 +1214,11 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   experienceText: { fontSize: 12, color: '#7c3aed', fontWeight: 'bold' },
-  achievementsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  achievementsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
   achievementItem: { alignItems: 'center', flex: 1 },
   achievementIcon: { fontSize: 20, marginBottom: 4 },
   achievementLabel: { fontSize: 10, color: '#6B7280', textAlign: 'center' },
@@ -817,11 +1251,28 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 20, fontWeight: 'bold', color: '#7C3AED', marginBottom: 4 },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#7C3AED',
+    marginBottom: 4,
+  },
   statLabel: { fontSize: 12, color: '#6B7280' },
   statDivider: { width: 1, backgroundColor: '#D1D5DB', marginHorizontal: 10 },
-  bookBtn: { borderRadius: 50, marginBottom: 16, height: 48, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15, elevation: 3 },
-  bookBtnInner: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+  bookBtn: {
+    borderRadius: 50,
+    marginBottom: 16,
+    height: 48,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 3,
+  },
+  bookBtnInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
   bookBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   findMoreButton: {
     borderRadius: 25,
@@ -937,26 +1388,6 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.5,
   },
-  bookSessionText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  pricingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#faf5ff',
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 16,
-  },
-  pricingLeft: { flexDirection: 'row', alignItems: 'center' },
-  videoIcon: { fontSize: 18, marginRight: 8 },
-  pricingText: { fontSize: 14, color: '#374151' },
-  pricingRight: { flexDirection: 'row', alignItems: 'center' },
-  priceSymbol: { fontSize: 16, color: '#7C3AED', marginRight: 2 },
-  priceAmount: { fontSize: 18, fontWeight: 'bold', color: '#7C3AED' },
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: '#F3F4F6',
@@ -966,11 +1397,26 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 8 },
-  activeTab: { backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  activeTab: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
   tabText: { fontSize: 14, color: '#6B7280', fontWeight: '600' },
   activeTabText: { color: '#7C3AED' },
   scrollView: { flex: 1, paddingHorizontal: 20 },
-  tabContent: { padding: 20, borderRadius: 8, backgroundColor: 'white', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 2 },
+  tabContent: {
+    padding: 20,
+    borderRadius: 8,
+    backgroundColor: 'white',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -982,9 +1428,22 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937', marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   bioText: { fontSize: 14, color: '#374151', lineHeight: 26 },
-  qualification: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
+  qualification: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 8,
+  },
   availabilityText: { fontSize: 14, color: '#374151', marginBottom: 4 },
   languagesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   languageBadge: {
@@ -1015,8 +1474,17 @@ const styles = StyleSheet.create({
   },
   expertiseText: { fontSize: 14, color: '#1F2937', flex: 1 },
   focusList: { marginTop: 8 },
-  focusItem: { fontSize: 14, color: '#374151', marginBottom: 4, paddingLeft: 12 },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  focusItem: {
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 4,
+    paddingLeft: 12,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   detailLabel: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
   detailValue: { fontSize: 14, color: '#1F2937', fontWeight: '600' },
   ratingSummaryCard: {
@@ -1047,17 +1515,17 @@ const styles = StyleSheet.create({
     fontSize: 48,
     fontWeight: 'bold',
     color: '#7C3AED',
-    marginBottom: 8
+    marginBottom: 8,
   },
   starsContainer: {
     flexDirection: 'row',
     marginBottom: 8,
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   totalSessions: {
     fontSize: 14,
     color: '#6B7280',
-    textAlign: 'center'
+    textAlign: 'center',
   },
   iconContainer: {
     flexDirection: 'row',
@@ -1104,7 +1572,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
   reviewerInfo: { flexDirection: 'row', alignItems: 'flex-start', flex: 1 },
   reviewerImage: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },
   reviewerPlaceholder: {
@@ -1118,7 +1591,12 @@ const styles = StyleSheet.create({
   },
   reviewerInitial: { fontSize: 16, fontWeight: 'bold', color: '#6B7280' },
   reviewerDetails: { flex: 1 },
-  nameDateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  nameDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   reviewerName: { fontSize: 14, fontWeight: 'bold', color: '#1F2937' },
   reviewDateInline: { fontSize: 12, color: '#6B7280', fontStyle: 'italic' },
   reviewDate: { fontSize: 12, color: '#6B7280' },
@@ -1202,6 +1680,14 @@ const styles = StyleSheet.create({
   },
   disabledBtn: {
     opacity: 0.5,
+  },
+  bookSessionBtn: {
+    borderRadius: 50,
+    height: 48,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 3,
   },
   modalOverlay: {
     flex: 1,
@@ -1336,8 +1822,263 @@ const styles = StyleSheet.create({
     marginTop: 14,
     fontSize: 14,
   },
+  bookingPromptModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    width: '90%',
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  bookingPromptHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  bookingPromptMentorInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  bookingPromptMentorImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#7c3aed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  bookingPromptMentorInitial: {
+    fontSize: 20,
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  bookingPromptMentorName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  bookingPromptMentorSpecialty: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  bookingPromptSessionInfo: {
+    alignItems: 'flex-end',
+  },
+  bookingPromptSessionFee: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#7c3aed',
+  },
+  bookingPromptSessionDuration: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  bookingPromptDetails: {
+    marginBottom: 24,
+  },
+  bookingPromptTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  bookingPromptDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  bookingPromptActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  bookingPromptCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 25,
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+  },
+  bookingPromptCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  bookingPromptBookBtn: {
+    flex: 2,
+    borderRadius: 25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  bookingPromptBookBtnInner: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  bookingPromptBookText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  bookingSection: {
+    padding: 20,
+  },
+  bookingTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  dateScroll: { marginBottom: 16 },
+  dateScrollContent: { paddingHorizontal: 0 },
+  dateCard: {
+    width: 80,
+    height: 90,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  selectedDateCard: {
+    backgroundColor: '#F5F3FF',
+    borderColor: '#8B5CF6',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  dateDay: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  dateNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  dateMonth: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  selectedDateText: { color: '#8B5CF6' },
+  disabledDateText: { color: '#9CA3AF' },
+  pastDateCard: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    opacity: 0.6,
+  },
+  noSlotsDateCard: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
+  timeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  timeSlot: {
+    width: '48%',
+    aspectRatio: 2.5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  selectedTimeSlot: {
+    backgroundColor: '#F5F3FF',
+    borderColor: '#8B5CF6',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pastTimeSlot: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    opacity: 0.6,
+  },
+  timeText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  selectedTimeText: { color: '#8B5CF6', fontWeight: '600' },
+  pastTimeText: { color: '#9CA3AF' },
+  checkIcon: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#8B5CF6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noSlotsContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noSlotsText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  proceedSection: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  proceedBtn: {
+    borderRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 3,
+  },
+  proceedBtnInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+  },
+  proceedText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
 });
 
 export default MentorProfileScreen;
-
-

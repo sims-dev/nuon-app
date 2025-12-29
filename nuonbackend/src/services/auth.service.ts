@@ -38,7 +38,8 @@ export class AuthService {
         password = password.trim(); // Trim whitespace
         console.log('[LOGIN] DEBUG: Looking for user with email:', email.toLowerCase());
         const user = await this.prisma.user.findFirst({
-            where: { email: email.toLowerCase() }
+            where: { email: email.toLowerCase() },
+            include: { userRole: true }
         });
 
         console.log('[LOGIN] DEBUG: User found:', !!user);
@@ -112,7 +113,7 @@ export class AuthService {
         name: string;
         email?: string;
         password?: string; // Made optional for profile completion
-        phoneNumber: string;
+        phoneNumber?: string;
         specialization?: string;
         experience?: number;
         organization?: string;
@@ -124,11 +125,15 @@ export class AuthService {
         profileIncomplete?: boolean;
         highestQualification?: string;
         registrationNumber?: string;
+        currentWorkplace?: string;
     }): Promise<Record<string, unknown>> {
-        // Check for existing user by phone number
-        const existingUserByPhone = await this.prisma.user.findUnique({
-            where: { phoneNumber: data.phoneNumber }
-        });
+        // Check for existing user by phone number if provided
+        let existingUserByPhone = null;
+        if (data.phoneNumber) {
+            existingUserByPhone = await this.prisma.user.findUnique({
+                where: { phoneNumber: data.phoneNumber }
+            });
+        }
 
         if (existingUserByPhone) {
             // Always allow profile completion/update
@@ -141,10 +146,10 @@ export class AuthService {
                 city: data.city || '',
                 state: data.state || '',
                 location: data.location || '',
-                hospital: data.organization || '', // Map organization to hospital
+                hospital: data.currentWorkplace || data.organization || '', // Map to hospital field
                 qualification: data.highestQualification || '',
                 registrationNumber: data.registrationNumber || '',
-                isProfileComplete: data.isProfileComplete !== undefined ? data.isProfileComplete : true
+                isProfileComplete: data.isProfileComplete !== undefined ? data.isProfileComplete : (data.profileIncomplete === true ? false : true)
             };
 
             // Only update password if provided (for profile completion, password might not be provided)
@@ -173,6 +178,9 @@ export class AuthService {
                     role: updatedUser.role,
                     specialization: updatedUser.specialization,
                     experience: updatedUser.experience,
+                    currentWorkplace: updatedUser.hospital,
+                    registrationNumber: updatedUser.registrationNumber,
+                    highestQualification: updatedUser.qualification,
                     organization: updatedUser.organization,
                     city: updatedUser.city,
                     state: updatedUser.state,
@@ -209,12 +217,19 @@ export class AuthService {
             );
         }
 
-        const hashedPassword = await bcrypt.hash(data.password, 10);
+        // For phone-based registration, password might not be provided
+        let hashedPassword;
+        if (data.password) {
+            hashedPassword = await bcrypt.hash(data.password, 10);
+        } else {
+            // Set default password for phone users
+            hashedPassword = await bcrypt.hash('phoneuser123', 10);
+        }
         const user = await this.prisma.user.create({
             data: {
                 name: data.name,
                 email: data.email ? data.email.toLowerCase() : null,
-                phoneNumber: data.phoneNumber,
+                phoneNumber: data.phoneNumber || null,
                 password: hashedPassword,
                 roleId: role.id,
                 specialization: data.specialization || '',
@@ -224,11 +239,14 @@ export class AuthService {
                 state: data.state || '',
                 location: data.location || '',
                 bio: 'Registered user',
-                isProfileComplete: true
-            } as any,
+                hospital: data.currentWorkplace || data.organization || '',
+                qualification: data.highestQualification || '',
+                registrationNumber: data.registrationNumber || '',
+                isProfileComplete: data.isProfileComplete !== undefined ? data.isProfileComplete : false
+            },
             include: {
                 userRole: true
-            } as any
+            }
         });
 
         const accessToken = this.generateAccessToken(user);
@@ -244,6 +262,9 @@ export class AuthService {
                 role: (user as any).userRole?.name || 'user',
                 specialization: user.specialization,
                 experience: user.experience,
+                currentWorkplace: user.hospital,
+                registrationNumber: user.registrationNumber,
+                highestQualification: user.qualification,
                 organization: user.organization,
                 city: user.city,
                 state: user.state,
@@ -268,6 +289,7 @@ export class AuthService {
         state?: string;
         organization?: string;
         location?: string;
+        isProfileComplete?: boolean;
     }): Promise<Record<string, unknown>> {
         // Check if email is being changed and if it's already taken by another user
         if (data.email) {
@@ -290,9 +312,11 @@ export class AuthService {
             !!(data.name &&
             data.specialization &&
             data.experience !== undefined &&
-            data.currentWorkplace &&
-            data.registrationNumber &&
-            data.highestQualification);
+            data.highestQualification &&
+            data.city &&
+            data.state &&
+            data.organization &&
+            data.registrationNumber);
 
         const user = await this.prisma.user.update({
             where: { id: userId },
@@ -311,6 +335,11 @@ export class AuthService {
                 isProfileComplete: isProfileComplete
             }
         });
+
+        // Auto-register for free content if profile is now complete
+        if (isProfileComplete) {
+            await this.autoRegisterFreeContent(userId);
+        }
 
         return {
             success: true,
@@ -331,6 +360,7 @@ export class AuthService {
                 organization: user.organization,
                 location: user.location,
                 isProfileComplete: user.isProfileComplete,
+                profileIncomplete: !user.isProfileComplete,
                 profilePicture: user.profilePicture
             }
         };
@@ -338,27 +368,38 @@ export class AuthService {
 
     async getCurrentProfile(userId: bigint): Promise<Record<string, unknown>> {
         // Reuse getProfile logic but ensure consistent response shape
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: { userRole: true }
+        });
         if (!user) {
-            throw new HttpException(
-                { success: false, message: 'User not found' },
-                HttpStatus.NOT_FOUND
-            );
+            // Return 200 with null profile if user not found
+            return {
+                success: true,
+                profile: null
+            };
         }
         return {
             success: true,
             user: {
                 _id: user.id.toString(),
                 id: user.id.toString(),
-                name: user.name,
-                email: user.email,
+                name: user.name || "",
+                email: user.email || "",
                 phoneNumber: user.phoneNumber,
-                role: (user as any).userRole?.name || 'user',
-                specialization: user.specialization,
+                role: user.userRole?.name || 'user',
+                specialization: user.specialization || null,
                 experience: user.experience,
+                currentWorkplace: user.hospital,
+                registrationNumber: user.registrationNumber,
+                highestQualification: user.qualification,
+                city: user.city,
+                state: user.state,
                 location: user.location,
                 profilePicture: user.profilePicture || null,
-                isProfileComplete: user.isProfileComplete
+                isProfileComplete: user.isProfileComplete,
+                profileIncomplete: !user.isProfileComplete,
+                adminLevel: (user as any).adminLevel || 'standard'
             }
         };
     }
@@ -437,7 +478,7 @@ export class AuthService {
                     data: {
                         name: 'OTP User',
                         email: null,
-                        phoneNumber: data.mobile?.toString() || '',
+                        phoneNumber: data.mobile?.toString() || null,
                         role_id: role.id,
                         bio: 'OTP authenticated user'
                     } as any
@@ -615,6 +656,178 @@ export class AuthService {
     }
 
 
+
+    async loginPhone(phoneNumber: string): Promise<Record<string, unknown>> {
+        const user = await this.prisma.user.findUnique({
+            where: { phoneNumber }
+        });
+
+        if (!user) {
+            throw new HttpException(
+                { success: false, message: 'User not found. Please register first.' },
+                HttpStatus.NOT_FOUND
+            );
+        }
+
+        const role = await this.prisma.role.findUnique({
+            where: { id: user.roleId },
+            select: { name: true }
+        });
+
+        const accessToken = this.generateAccessToken({
+            id: user.id,
+            email: user.email,
+            mobile: user.phoneNumber,
+            role: role?.name || 'user'
+        });
+        const refreshToken = this.generateRefreshToken({
+            id: user.id,
+            email: user.email
+        });
+
+        // Auto-register for free content
+        await this.autoRegisterFreeContent(user.id);
+
+        return {
+            success: true,
+            message: 'Login successful',
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                role: role?.name || 'user',
+                specialization: user.specialization,
+                experience: user.experience,
+                currentWorkplace: user.hospital,
+                registrationNumber: user.registrationNumber,
+                highestQualification: user.qualification,
+                city: user.city,
+                state: user.state,
+                organization: user.organization,
+                location: user.location,
+                isProfileComplete: user.isProfileComplete,
+                profilePicture: user.profilePicture
+            },
+            accessToken,
+            refreshToken
+        };
+    }
+
+    async autoRegisterFreeContent(userId: bigint): Promise<void> {
+        try {
+            // Register for free courses
+            const freeCourses = await this.prisma.course.findMany({
+                where: { price: 0, isActive: true }
+            });
+
+            for (const course of freeCourses) {
+                // Check if already registered
+                const existingPurchase = await this.prisma.purchase.findFirst({
+                    where: {
+                        userId,
+                        courseId: course.id
+                    }
+                });
+
+                if (!existingPurchase) {
+                    await this.prisma.purchase.create({
+                        data: {
+                            userId,
+                            courseId: course.id,
+                            itemType: 'course',
+                            amount: 0,
+                            isCompleted: true,
+                            status: 'completed'
+                        }
+                    });
+                }
+            }
+
+            // Register for free engage activities
+            const freeEngageActivities = await this.prisma.engageActivity.findMany({
+                where: { price: 0, isActive: true }
+            });
+
+            for (const activity of freeEngageActivities) {
+                // Check if already registered
+                const existingRegistration = await this.prisma.engageActivityRegistration.findFirst({
+                    where: {
+                        userId,
+                        activityId: activity.id
+                    }
+                });
+
+                if (!existingRegistration) {
+                    await this.prisma.engageActivityRegistration.create({
+                        data: {
+                            userId,
+                            activityId: activity.id,
+                            status: 'registered',
+                            amountPaid: 0
+                        }
+                    });
+                }
+            }
+
+            // Register for free mentor sessions (mentors with free availability)
+            const freeMentorSlots = await this.prisma.mentorAvailability.findMany({
+                where: {
+                    price: 0,
+                    isActive: true,
+                    isBooked: false
+                },
+                include: {
+                    mentor: true
+                }
+            });
+
+            // For free mentors, create bookings automatically
+            for (const slot of freeMentorSlots.slice(0, 1)) { // Limit to 1 free session per login
+                // Check if user already has a booking with this mentor
+                const existingBooking = await this.prisma.booking.findFirst({
+                    where: {
+                        nurseId: userId,
+                        mentorId: slot.mentorId,
+                        status: { in: ['pending', 'confirmed', 'completed'] }
+                    }
+                });
+
+                if (!existingBooking) {
+                    await this.prisma.booking.create({
+                        data: {
+                            nurseId: userId,
+                            mentorId: slot.mentorId,
+                            mentorAvailabilityId: slot.id,
+                            dateTime: slot.startDateTime,
+                            duration: slot.duration || 60,
+                            price: 0,
+                            status: 'confirmed'
+                        }
+                    });
+
+                    // Mark slot as booked
+                    await this.prisma.mentorAvailability.update({
+                        where: { id: slot.id },
+                        data: { isBooked: true }
+                    });
+
+                    break; // Only one free booking
+                }
+            }
+
+        } catch (error) {
+            console.error('Error auto-registering free content:', error);
+            // Don't throw error, just log it
+        }
+    }
+
+    async updatePushToken(userId: bigint, fcmToken: string): Promise<void> {
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { deviceToken: fcmToken }
+        });
+    }
 
     async refresh(refreshToken: string): Promise<{ status: string; accessToken: string }> {
         if (!refreshToken) {

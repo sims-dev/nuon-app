@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useContext, useState } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,32 @@ import {
   ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { NEON_COLORS } from '../utils/colors';
+import LinearGradient from 'react-native-linear-gradient';
+import { AuthContext } from '../contexts/AuthContext';
 
 const DashboardScreen = () => {
   const navigation = useNavigation();
+  const { user } = useContext(AuthContext);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Dashboard</Text>
+
+      {/* Complete Profile Banner */}
+      {user?.profileIncomplete && (
+        <View style={styles.profileBanner}>
+          <Text style={styles.bannerTitle}>Complete Your Profile</Text>
+          <Text style={styles.bannerText}>
+            Finish setting up your professional details to unlock all features and get personalized recommendations.
+          </Text>
+          <TouchableOpacity
+            style={styles.bannerButton}
+            onPress={() => navigation.navigate('ProfileSetup')}
+          >
+            <Text style={styles.bannerButtonText}>Complete Now</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Home Button */}
       <TouchableOpacity
@@ -107,6 +125,42 @@ const styles = StyleSheet.create({
   buttonText: {
     color: NEON_COLORS.textPrimary,
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  profileBanner: {
+    backgroundColor: NEON_COLORS.neonBlue,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    width: '80%',
+    shadowColor: NEON_COLORS.neonBlue,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  bannerTitle: {
+    color: NEON_COLORS.textPrimary,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  bannerText: {
+    color: NEON_COLORS.textPrimary,
+    fontSize: 14,
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  bannerButton: {
+    backgroundColor: NEON_COLORS.neonPurple,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  bannerButtonText: {
+    color: NEON_COLORS.textPrimary,
+    fontSize: 14,
     fontWeight: 'bold',
   },
 });

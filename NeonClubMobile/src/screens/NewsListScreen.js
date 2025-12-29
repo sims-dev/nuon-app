@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, Image, TouchableOpacity, TextInput, Platform, Modal } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import api, { activitiesAPI, newsAPI } from '../services/api';
+import api, { activitiesAPI, newsAPI, getCurrentBaseURL, getFullMediaUrl } from '../services/api';
 import { connectSocket, on as onSocket, disconnectSocket } from '../utils/socket';
 import { COLOR_SCHEME } from '../utils/colors';
+import { IP_ADDRESS } from '../config/ipConfig';
+import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
 const Badge = ({ label, color }) => (
   <View style={[styles.badge, { backgroundColor: color || '#EEF2FF' }]}>
@@ -20,13 +22,13 @@ const NewsCard = ({ item, onPress }) => {
   // Get thumbnail from images array or videos array with fallback
   let image = null;
   if (item.images && item.images.length > 0 && item.images[0].url) {
-    image = item.images[0].url.startsWith('/uploads') ? `http://192.168.0.209:5000${item.images[0].url}` : item.images[0].url;
+    image = getFullMediaUrl(item.images[0].url);
   } else if (item.videos && item.videos.length > 0 && item.videos[0].thumbnail) {
-    image = item.videos[0].thumbnail.startsWith('/uploads') ? `http://192.168.0.209:5000${item.videos[0].thumbnail}` : item.videos[0].thumbnail;
+    image = getFullMediaUrl(item.videos[0].thumbnail);
   } else if (item.imageUrl) {
-    image = item.imageUrl.startsWith('/uploads') ? `http://192.168.0.209:5000${item.imageUrl}` : item.imageUrl;
+    image = getFullMediaUrl(item.imageUrl);
   } else if (item.thumbnail) {
-    image = item.thumbnail.startsWith('/uploads') ? `http://192.168.0.209:5000${item.thumbnail}` : item.thumbnail;
+    image = getFullMediaUrl(item.thumbnail);
   } else {
     // Fallback placeholder
     image = `https://via.placeholder.com/300x160/6B7280/FFFFFF?text=${item.title?.substring(0, 10) || 'News'}`;
@@ -38,13 +40,11 @@ const NewsCard = ({ item, onPress }) => {
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={onPress}>
       <View style={styles.thumb}>
-        {image ? (
-          <Image source={{ uri: image }} style={{ width: '100%', height: '100%' }} />
-        ) : (
-          <View style={{ flex: 1, backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ color: '#9CA3AF', fontSize: 24 }}>📰</Text>
-          </View>
-        )}
+        <ImageWithFallback
+          src={image}
+          alt={item.title}
+          style={{ width: '100%', height: '100%' }}
+        />
         {item.featured && (
           <View style={styles.featuredBadge}>
             <Text style={styles.featuredText}>⭐ Featured</Text>
@@ -80,17 +80,17 @@ const NewsCard = ({ item, onPress }) => {
 };
 
 const NewsListScreen = ({ navigation }) => {
-  const [news, setNews] = useState([]);
-  const [range, setRange] = useState('All Time');
-  const [showDropdown, setShowDropdown] = useState(false);
+   const [news, setNews] = useState([]);
+   const BASE_URL = getCurrentBaseURL().replace('/api', '');
 
   const fetchNews = async () => {
     try {
-      const res = await newsAPI.getLatest();
-      let list = res?.data || [];
-      if (!Array.isArray(list)) list = [];
-      setNews(list);
+          const res = await newsAPI.getLatest();
+          let list = res?.data || [];
+          if (!Array.isArray(list)) list = [];
+          setNews(list);
     } catch (e) {
+      console.log('[NewsListScreen] Error fetching news:', e);
       try { await activitiesAPI.create({ type:'error', title:'news-fetch-failed', meta:{ message: String(e?.message||e) } }); } catch {}
     }
   };
@@ -103,72 +103,18 @@ const NewsListScreen = ({ navigation }) => {
     return () => { try { off1 && off1(); off2 && off2(); } catch {} disconnectSocket(); };
   }, []);
 
-  const filtered = useMemo(() => {
-    if (range === 'All Time') return news;
-    const now = Date.now();
-    const days = range === 'This Month' ? 30 : range === 'This Week' ? 7 : 365;
-    return news.filter(n => now - new Date(n.publishedAt || n.createdAt || now).getTime() < days*86400000);
-  }, [range, news]);
+  const filtered = news;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
       {/* Gradient header */}
       <LinearGradient colors={['#6366F1', '#F43F5E']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.header}>
         <View style={styles.headerTopRow}>
-          <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Main'))} style={styles.backBtn}><Text style={{ color:'#fff', fontSize: 18 }}>‹</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Main'))} style={styles.backBtn}><Text style={{ color:'#fff', fontSize: 24 }}>‹</Text></TouchableOpacity>
           <Text style={styles.headerTitle}>News & Announcements</Text>
         </View>
         <Text style={styles.headerSub}>Stay updated with latest healthcare insights</Text>
       </LinearGradient>
-
-      {/* Filters - Figma Style with Filter Icon and Dropdown */}
-      <View style={styles.filtersRow}>
-        <View style={styles.filterLeft}>
-          <Text style={styles.filterIconGray}>⚙</Text>
-          <TouchableOpacity 
-            style={styles.filterDropdown} 
-            onPress={() => setShowDropdown(!showDropdown)}
-          >
-            <Text style={styles.filterDropdownText}>{range}</Text>
-            <Text style={styles.dropdownArrow}>▼</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.countText}>{filtered.length} articles</Text>
-      </View>
-
-      {/* Dropdown Menu - Overlay */}
-      {showDropdown && (
-        <>
-          <TouchableOpacity 
-            style={styles.dropdownOverlay} 
-            activeOpacity={1}
-            onPress={() => setShowDropdown(false)}
-          />
-          <View style={styles.dropdownMenu}>
-            <TouchableOpacity 
-              style={[styles.dropdownItem, range === 'All Time' && styles.dropdownItemSelected]}
-              onPress={() => { setRange('All Time'); setShowDropdown(false); }}
-            >
-              <Text style={[styles.dropdownItemText, range === 'All Time' && styles.dropdownItemActiveText]}>All Time</Text>
-              {range === 'All Time' && <Text style={styles.checkmark}>✓</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.dropdownItem, range === 'This Week' && styles.dropdownItemSelected]}
-              onPress={() => { setRange('This Week'); setShowDropdown(false); }}
-            >
-              <Text style={[styles.dropdownItemText, range === 'This Week' && styles.dropdownItemActiveText]}>This Week</Text>
-              {range === 'This Week' && <Text style={styles.checkmark}>✓</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.dropdownItem, range === 'This Month' && styles.dropdownItemSelected]}
-              onPress={() => { setRange('This Month'); setShowDropdown(false); }}
-            >
-              <Text style={[styles.dropdownItemText, range === 'This Month' && styles.dropdownItemActiveText]}>This Month</Text>
-              {range === 'This Month' && <Text style={styles.checkmark}>✓</Text>}
-            </TouchableOpacity>
-          </View>
-        </>
-      )}
 
       <FlatList
         data={filtered}
@@ -176,7 +122,9 @@ const NewsListScreen = ({ navigation }) => {
         renderItem={({ item }) => (
           <NewsCard
             item={item}
-            onPress={() => navigation.navigate('NewsViewer', { item })}
+            onPress={() => {
+              navigation.navigate('NewsDetail', { item });
+            }}
           />
         )}
         initialNumToRender={6}
@@ -190,10 +138,10 @@ const NewsListScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  header: { paddingTop: 36, paddingBottom: 16, paddingHorizontal: 16, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  header: { paddingTop: 60, paddingBottom: 16, paddingHorizontal: 16, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   backBtn: { padding: 6 },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  headerTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
   headerSub: { color: '#F1F5F9', marginTop: 8 },
   filtersRow: { flexDirection: 'row', alignItems: 'center', justifyContent:'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   filterLeft: {

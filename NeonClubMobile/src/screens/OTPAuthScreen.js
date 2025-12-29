@@ -13,6 +13,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, CommonActions } from '@react-navigation/native';
+import { InteractionManager } from 'react-native';
 import api, { probeAndFixBase, getCurrentBaseURL, setBaseOverride } from '../services/api';
 import { sendOTP as fbSendOTP, verifyOTP as fbVerifyOTP, getIdToken as fbGetIdToken } from '../services/otp';
 import { ensureFirebaseInitialized } from '../services/firebaseApp';
@@ -23,12 +24,14 @@ import { Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
 import { NEON_COLORS } from '../utils/colors';
+import { NuonIcon } from '../components/NuonLogo';
+import { navigationRef } from '../AppNavigator';
 
 const phoneSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
 
 const OTPAuthScreen = () => {
   const navigation = useNavigation();
-  const { updateUser, setToken, setRefreshToken } = useContext(AuthContext);
+  const { updateUser, setToken } = useContext(AuthContext);
   const [authMethod, setAuthMethod] = useState('phone'); // 'phone' or 'email'
   const [identifier, setIdentifier] = useState('');
   const [otp, setOtp] = useState('');
@@ -39,9 +42,10 @@ const OTPAuthScreen = () => {
   const [otpSession, setOtpSession] = useState(null); // idempotent session header for backend
   const [inputFocused, setInputFocused] = useState(false);
   const [focusedOtpIndex, setFocusedOtpIndex] = useState(-1);
-  
+
   // OTP input refs for auto-focus
   const otpInputRefs = useRef([]);
+  const isVerifyingRef = useRef(false);
 
   useEffect(() => {
     // Auto-focus first OTP input when step changes to verify
@@ -112,12 +116,16 @@ const OTPAuthScreen = () => {
   };
 
   const handleVerifyOTP = async () => {
+    if (isVerifyingRef.current) return;
+    isVerifyingRef.current = true;
+
     if (!/^\d{6}$/.test(otp)) {
       Alert.alert('Invalid OTP', 'Enter the 6 digit code');
+      isVerifyingRef.current = false;
       return;
     }
     try {
-  setLoading(true);
+   setLoading(true);
       const value = identifier.trim();
 
       let res;
@@ -150,7 +158,10 @@ const OTPAuthScreen = () => {
         res = await api.post('/otp/verify', payload, { timeout: 5000, headers: otpSession ? { 'x-otp-session': otpSession } : undefined });
         if (__DEV__) console.log('Verified using backend');
       }
-  let { token: accessToken, refreshToken, user, isNewUser } = res?.data || {};
+      console.log('[OTPAuth] OTP verification API response:', res);
+  let { token, user, isNewUser } = res?.data || {};
+      console.log('[OTPAuth] Extracted token:', !!token, 'user:', !!user, 'isNewUser:', isNewUser);
+      console.log('[OTPAuth] User object from API:', JSON.stringify(user, null, 2));
       // Ensure phone number captured flows into profile
       if (authMethod === 'phone') {
         const digits = (identifier || '').replace(/\D/g, '');
@@ -159,34 +170,42 @@ const OTPAuthScreen = () => {
           user = { ...(user || {}), phoneNumber: user?.phoneNumber || phone };
         }
       }
-      if (accessToken || token) {
-        const finalToken = accessToken || token;
-        await AsyncStorage.setItem('token', finalToken);
-        await AsyncStorage.setItem('refreshToken', refreshToken);
+      console.log('[OTPAuth] User after phone update:', JSON.stringify(user, null, 2));
+      if (token) {
+        console.log('[OTPAuth] About to update user and token');
+        await AsyncStorage.setItem('token', token);
+        // Let AuthContext determine profileIncomplete based on user data
         await AsyncStorage.setItem('user', JSON.stringify(user));
-        setToken(finalToken);
-        setRefreshToken(refreshToken);
+        console.log('[OTPAuth] Calling updateUser with user:', JSON.stringify(user, null, 2));
         updateUser(user);
+        console.log('[OTPAuth] updateUser called');
+        setToken(token);
+        console.log('[OTPAuth] setToken called');
         try { await registerPushTokenIfAvailable(); } catch {}
-      }
-      
-      // Navigate based on whether user is new
-      console.log('[DEBUG] OTP Verification - Navigation decision:', { isNewUser, user: user?.name, email: user?.email, isProfileComplete: user?.isProfileComplete });
 
-      if (isNewUser) {
-        // New user, complete profile first
-        console.log('[DEBUG] Navigating to ProfileSetup for new user');
-        navigation.navigate('ProfileSetup', { user, token, isNewUser });
-      } else {
-        // Existing user, go to dashboard (banner will show if profile incomplete)
-        console.log('[DEBUG] Navigating to Main for existing user');
-        setTimeout(() => {
-          navigation.dispatch(CommonActions.reset({
+        if (isNewUser) {
+          navigation.reset({
             index: 0,
-            routes: [{ name: 'Main' }]
-          }));
-        }, 100);
+            routes: [{ name: 'ProfileSetup' }],
+          });
+        } else {
+          navigation.reset({
+            index: 0,
+            routes: [{
+              name: 'Main',
+              state: {
+                routes: [{
+                  name: 'Home'
+                }]
+              }
+            }],
+          });
+        }
       }
+
+      console.log('[DEBUG] OTP Verification - User authenticated:', { isNewUser, user: user?.name, email: user?.email, isProfileComplete: user?.isProfileComplete, profileIncomplete: user?.profileIncomplete });
+      console.log('[DEBUG] Full response data:', res?.data);
+      console.log('[DEBUG] User object after verification:', JSON.stringify(user, null, 2));
     } catch (error) {
       console.error('Verify OTP error details:', JSON.stringify({
         message: error?.message,
@@ -199,6 +218,7 @@ const OTPAuthScreen = () => {
       Alert.alert('Error', `${errorMessage}\nBase: ${baseNow || 'n/a'}`);
     } finally {
       setLoading(false);
+      isVerifyingRef.current = false;
     }
   };
 
@@ -234,19 +254,24 @@ const OTPAuthScreen = () => {
       colors={['#9333EA', '#4F46E5', '#2563EB']} // purple-600 via indigo-600 to blue-600
       style={styles.container}
     >
-      {/* Animated floating circles */}
-      <View style={styles.floatingCircle1} />
-      <View style={styles.floatingCircle2} />
+      {/* Animated background */}
+      <View style={styles.animatedBackground}>
+        <View style={styles.floatingCircle1} />
+        <View style={styles.floatingCircle2} />
+      </View>
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
       >
         <View style={styles.header}>
-          {/* Logo with NUON branding */}
+          {/* Logo */}
           <View style={styles.logoContainer}>
-              <Image source={require('../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+            <View style={styles.neonGlowPurple}>
+              <NuonIcon size={80} variant="default" />
             </View>
+          </View>
           <Text style={styles.title}>Welcome to NUON</Text>
           <Text style={styles.tagline}>Nurse United, Opportunities Nourished</Text>
         </View>
@@ -263,7 +288,7 @@ const OTPAuthScreen = () => {
 
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Phone Number</Text>
-                <View style={[styles.phoneInputWrapper, inputFocused && { borderColor: NEON_COLORS.neonBlue }]}>
+                <View style={[styles.phoneInputWrapper, inputFocused && { borderColor: NEON_COLORS.neonPurple }]}>
                   <SvgXml xml={phoneSvg} width={20} height={20} color="#9CA3AF" style={{marginRight: 8}} />
                   <TextInput
                     style={styles.phoneInput}
@@ -275,11 +300,14 @@ const OTPAuthScreen = () => {
                     }}
                     keyboardType="number-pad"
                     placeholderTextColor="#9CA3AF"
+                    maxLength={10}
                     onFocus={() => setInputFocused(true)}
                     onBlur={() => setInputFocused(false)}
                   />
                 </View>
-                <Text style={styles.helperText}>We'll send you a 6-digit OTP to verify your number</Text>
+                <Text style={styles.helperText}>
+                  We'll send you a 6-digit OTP to verify your number
+                </Text>
               </View>
 
               <TouchableOpacity
@@ -306,7 +334,14 @@ const OTPAuthScreen = () => {
             <View style={styles.authCard}>
               <View style={styles.cardHeader}>
                 <View style={styles.otpIconContainer}>
-                  <SvgXml xml={phoneSvg} width={32} height={32} color={NEON_COLORS.neonPurple} />
+                  <LinearGradient
+                    colors={['#E9D5FF', '#DBEAFE']} // from-purple-100 to-blue-100
+                    style={styles.otpIconGradient}
+                    start={{x: 0, y: 0}}
+                    end={{x: 1, y: 0}}
+                  >
+                    <SvgXml xml={phoneSvg} width={32} height={32} color={NEON_COLORS.neonBlueGlow} />
+                  </LinearGradient>
                 </View>
                 <Text style={[styles.cardTitle, {fontSize: 15}]}>Verify OTP</Text>
                 <Text style={styles.cardSubtitle}>
@@ -324,8 +359,7 @@ const OTPAuthScreen = () => {
                       ref={(ref) => (otpInputRefs.current[index] = ref)}
                       style={[
                         styles.otpInput,
-                        otp[index] && styles.otpInputFilled,
-                        focusedOtpIndex === index && {backgroundColor: '#DBEAFE'}
+                        focusedOtpIndex === index && {borderColor: '#2563EB', backgroundColor: '#DBEAFE'}
                       ]}
                       maxLength={1}
                       keyboardType="number-pad"
@@ -386,7 +420,6 @@ const OTPAuthScreen = () => {
                 </LinearGradient>
               </TouchableOpacity>
 
-              {/* Re-add Change Phone Number inside the card as requested */}
               <TouchableOpacity
                 style={styles.changeNumberButton}
                 onPress={() => {
@@ -401,7 +434,7 @@ const OTPAuthScreen = () => {
           </>
         )}
         </View>
-        {/* Privacy text displayed below the card (replaces bottom 'Change Phone Number') */}
+        {/* Footer */}
         <View style={[styles.footerOuter, { marginBottom: Math.max(insets.bottom, 16) }]}>
           <Text style={styles.footerText}>By continuing, you agree to our Terms of Service and Privacy Policy</Text>
         </View>
@@ -414,6 +447,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  animatedBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
   floatingCircle1: {
     position: 'absolute',
     top: '25%',
@@ -423,6 +464,12 @@ const styles = StyleSheet.create({
     borderRadius: 192,
     backgroundColor: 'rgba(192, 132, 252, 0.2)', // purple-400/20
     opacity: 0.6,
+    // Note: React Native doesn't have blur-3xl, using shadow for similar effect
+    shadowColor: '#C084FC',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 50,
+    elevation: 10,
   },
   floatingCircle2: {
     position: 'absolute',
@@ -433,30 +480,33 @@ const styles = StyleSheet.create({
     borderRadius: 192,
     backgroundColor: 'rgba(96, 165, 250, 0.2)', // blue-400/20
     opacity: 0.5,
+    shadowColor: '#60A5FA',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 50,
+    elevation: 10,
   },
   keyboardContainer: {
     flex: 1,
     justifyContent: 'flex-start',
     paddingHorizontal: 20,
-    paddingTop: 40,
+    paddingTop: 20,
   },
   header: {
     alignItems: 'center',
     marginBottom: 20,
   },
   logoContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    justifyContent: 'center',
+    marginBottom: 16, // reduced
     alignItems: 'center',
-    marginBottom: 10,
-    shadowColor: '#9333EA',
+    justifyContent: 'center',
+  },
+  neonGlowPurple: {
+    shadowColor: NEON_COLORS.neonPurple,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
+    shadowOpacity: 0.8,
     shadowRadius: 10,
-    elevation: 6,
+    elevation: 10,
   },
   logoIcon: {
     fontSize: 48,
@@ -481,25 +531,27 @@ const styles = StyleSheet.create({
   },
   form: {
     width: '100%',
-    maxWidth: 448, // max-w-md
+    maxWidth: 480, // increased width
     alignSelf: 'center',
     paddingHorizontal: 8,
     alignItems: 'center',
   },
   authCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 12,
+    borderRadius: 24, // rounded-3xl
+    padding: 33, // increased for more length
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
-    elevation: 6,
-    // Keep a modest gap below the card; Change button is rendered below the card
-    marginBottom: 18,
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    elevation: 12,
+    marginBottom: 8,
   },
   cardHeader: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardLogoContainer: {
     alignItems: 'center',
     marginBottom: 16,
   },
@@ -507,7 +559,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
     color: '#111827', // gray-900
-    marginBottom: 10,
+    marginBottom: 15,
   },
   cardSubtitle: {
     fontSize: 14,
@@ -515,29 +567,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   phoneNumberDisplay: {
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: 'bold',
     color: '#111827', // gray-900
   },
   otpIconContainer: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#DBEAFE', // blue-100
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 6,
+  },
+  otpIconGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   otpIcon: {
     fontSize: 32,
     color: '#2563EB', // blue-600
   },
   inputContainer: {
-    marginBottom: 18,
+    marginBottom: 8,
   },
   label: {
     fontSize: 14,
@@ -546,7 +600,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   labelCenter: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: '#374151',
     marginBottom: 8,
@@ -556,10 +610,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 12, // rounded-xl
     borderWidth: 2,
     borderColor: '#E5E7EB', // gray-200
-    height: 56,
+    height: 56, // h-14
     paddingHorizontal: 12,
   },
   phoneIcon: {
@@ -584,17 +638,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   otpInput: {
-    width: 40,
-    height: 52,
+    width: 44, // reduced width
+    height: 60, // increased height
     borderRadius: 8,
     borderWidth: 2,
     borderColor: '#E5E7EB', // gray-200
     backgroundColor: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 18, // text-lg
     fontWeight: '600',
     textAlign: 'center',
     color: '#111827',
-    marginHorizontal: 3,
+    marginHorizontal: 2,
   },
   otpInputFilled: {
     borderColor: '#2563EB', // blue-600 when filled
@@ -602,8 +656,8 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     borderRadius: 9999, // rounded-full
-    height: 48,
-    marginTop: 8,
+    height: 48, // reduced
+    marginTop: 4,
   },
   buttonGradient: {
     flex: 1,
@@ -612,17 +666,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 9999,
     paddingHorizontal: 20,
-    shadowColor: '#EC4899',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
-    elevation: 5,
+    elevation: 8,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   primaryButtonText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
@@ -633,7 +687,7 @@ const styles = StyleSheet.create({
   },
   resendContainer: {
     alignItems: 'center',
-    marginVertical: 16,
+    marginVertical: 6,
   },
   timerText: {
     fontSize: 14,
@@ -650,8 +704,8 @@ const styles = StyleSheet.create({
   },
   changeNumberButton: {
     alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 25,
+    marginBottom: 0,
   },
   changeNumberOuter: {
     alignItems: 'center',
@@ -664,12 +718,12 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
-    color: '#FFFFFF', // white for contrast on gradient background
+    color: '#FFFFFF',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 0,
   },
   footerOuter: {
-    marginTop: 1,
+    marginTop: 24, // mt-6
     alignItems: 'center',
     paddingHorizontal: 20,
   },

@@ -6,11 +6,12 @@ import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Button from '@mui/material/Button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useSocket } from './SocketContext';
 import Badge from '@mui/material/Badge';
 import IconButton from '@mui/material/IconButton';
 import MessageIcon from '@mui/icons-material/Message';
+import NotificationsIcon from '@mui/icons-material/Notifications';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -31,10 +32,12 @@ const stats = [
 
 const DashboardHome = () => {
   const { socket, isConnected } = useSocket();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  const [notificationCount, setNotificationCount] = useState(0);
   const [stats, setStats] = useState([
     { label: 'Total Sessions', value: 0 },
     { label: 'Upcoming', value: 0 },
@@ -75,6 +78,25 @@ const DashboardHome = () => {
 
       fetchStats();
 
+      // Fetch notification count
+      const fetchNotificationCount = async () => {
+        try {
+          const response = await fetch(`${process.env.REACT_APP_API_URL}/notifications/count?userId=${localStorage.getItem('userId')}`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+            }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setNotificationCount(data.unreadCount || 0);
+          }
+        } catch (error) {
+          console.error('Failed to fetch notification count:', error);
+        }
+      };
+
+      fetchNotificationCount();
+
       return () => {
         socket.off('admin_message', handleAdminMessage);
       };
@@ -111,8 +133,13 @@ const DashboardHome = () => {
     <Box sx={{ display: 'flex' }}>
       <Sidebar />
       <Box component="main" sx={{ flexGrow: 1, p: 5, background: '#101010', minHeight: '100vh' }}>
-        {/* Messages Button */}
-        <Box sx={{ position: 'absolute', top: 20, right: 20 }}>
+        {/* Messages and Notifications Buttons */}
+        <Box sx={{ position: 'absolute', top: 20, right: 20, flexDirection: 'row' }}>
+          <IconButton onClick={() => navigate('/mentor/notifications')} sx={{ color: '#fff', mr: 1 }}>
+            <Badge badgeContent={notificationCount} color="error">
+              <NotificationsIcon />
+            </Badge>
+          </IconButton>
           <IconButton onClick={handleOpenMessages} sx={{ color: '#fff' }}>
             <Badge badgeContent={unreadCount} color="error">
               <MessageIcon />

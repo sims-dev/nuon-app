@@ -10,37 +10,28 @@ import {
   StatusBar,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import Video from 'react-native-video';
-import { progressAPI } from '../services/api';
+import { progressAPI, getCurrentBaseURL, getFullMediaUrl } from '../services/api';
 import { CONFIG } from '../utils/config';
 import { IP_ADDRESS } from '../config/ipConfig';
 
 const { width, height } = Dimensions.get('window');
 
 const VideoPlayerScreen = ({ route, navigation }) => {
-  const { videoUrl, title, courseId, lessonId } = route.params;
+  const { videoUrl, title, courseId, lessonId, thumbnail } = route.params;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const webViewRef = useRef(null);
 
-  // Helper to get full URL for uploads
-  const BASE_URL = (CONFIG.API_BASE_URL || '').replace(/\/api\/?$/i, '') || `http://${IP_ADDRESS}:5000`;
-  const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
-
   // Process video URL to ensure it's a full URL
   const processedVideoUrl = useMemo(() => {
     if (!videoUrl) return null;
-    return getFullUrl(videoUrl);
+    const url = getFullMediaUrl(videoUrl);
+    console.log('VideoPlayerScreen processedVideoUrl:', url, 'from:', videoUrl);
+    return url;
   }, [videoUrl]);
 
-  // Determine if this is a direct video file or embeddable video
-  const isDirectVideo = useMemo(() => {
-    if (!processedVideoUrl) return false;
-    // Check if it's a YouTube or Vimeo URL
-    const isYouTube = processedVideoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-    const isVimeo = processedVideoUrl.includes('vimeo.com');
-    return !isYouTube && !isVimeo;
-  }, [processedVideoUrl]);
+  // Always use WebView for better format support and large file handling
+  const isDirectVideo = false;
 
   useEffect(() => {
     // Auto-mark lesson as started when video loads
@@ -78,9 +69,7 @@ const VideoPlayerScreen = ({ route, navigation }) => {
     }
   };
 
-  const getVideoPlayerHTML = useMemo(() => {
-    if (isDirectVideo) return '';
-
+  const videoPlayerHTML = useMemo(() => {
     // Extract video ID from YouTube URL
     const videoId = processedVideoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
 
@@ -117,7 +106,7 @@ const VideoPlayerScreen = ({ route, navigation }) => {
       `;
     } else if (processedVideoUrl.includes('vimeo.com')) {
       // Vimeo embed
-      const vimeoId = videoUrl.match(/vimeo\.com\/(\d+)/)?.[1];
+      const vimeoId = processedVideoUrl.match(/vimeo\.com\/(\d+)/)?.[1];
       if (vimeoId) {
         return `
           <!DOCTYPE html>
@@ -143,15 +132,80 @@ const VideoPlayerScreen = ({ route, navigation }) => {
           </html>
         `;
       }
+    } else {
+      // Direct video file - use HTML5 video element
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+          <style>
+            * { margin: 0; padding: 0; }
+            html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+            video {
+              width: 100vw;
+              height: 100vh;
+              object-fit: contain;
+              background: #000;
+            }
+            .loading {
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              color: #fff;
+              font-size: 18px;
+              z-index: 10;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="loading">Loading video...</div>
+          <video
+            src="${processedVideoUrl}"
+            controls
+            playsinline
+            poster="${thumbnail || ''}"
+            preload="metadata"
+            onloadeddata="document.querySelector('.loading').style.display='none'; console.log('Video loaded successfully');"
+            onerror="console.error('Video load error:', event); window.ReactNativeWebView.postMessage('VIDEO_ERROR');"
+            onloadstart="console.log('Video load started');"
+            oncanplay="console.log('Video can play');"
+            onprogress="console.log('Video progress');"
+            onwaiting="console.log('Video buffering');"
+            onplaying="console.log('Video playing');"
+            type="video/mp4"
+          >
+            Your browser does not support the video tag.
+          </video>
+          <script>
+            const video = document.querySelector('video');
+            video.addEventListener('ended', () => {
+              window.ReactNativeWebView.postMessage('VIDEO_ENDED');
+            });
+            video.addEventListener('error', (e) => {
+              console.error('Video error:', e);
+              window.ReactNativeWebView.postMessage('VIDEO_ERROR');
+            });
+            // Ensure video fills screen
+            video.style.width = window.innerWidth + 'px';
+            video.style.height = window.innerHeight + 'px';
+          </script>
+        </body>
+        </html>
+      `;
     }
 
     return '';
-  }, [processedVideoUrl, isDirectVideo]);
+  }, [processedVideoUrl]);
 
   const handleWebViewMessage = (event) => {
     const message = event.nativeEvent.data;
     if (message === 'VIDEO_ENDED') {
       handleVideoEnd();
+    } else if (message === 'VIDEO_ERROR') {
+      setError('Failed to load video');
+      setLoading(false);
     }
   };
 
@@ -187,48 +241,6 @@ const VideoPlayerScreen = ({ route, navigation }) => {
     );
   }
 
-  if (isDirectVideo) {
-    return (
-      <View style={styles.container}>
-        <StatusBar hidden />
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.backText}>‹ Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.title} numberOfLines={1}>{title}</Text>
-          <View style={{ width: 50 }} />
-        </View>
-
-        <View style={styles.videoContainer}>
-          {loading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#fff" />
-              <Text style={styles.loadingText}>Loading video...</Text>
-            </View>
-          )}
-          <Video
-            source={{ uri: processedVideoUrl }}
-            style={styles.video}
-            controls={true}
-            resizeMode="contain"
-            preload="metadata"
-            onLoad={() => setLoading(false)}
-            onError={(error) => {
-              console.error('Video load error:', error);
-              setError(`Failed to load video: ${error?.error?.localizedDescription || 'Unknown error'}`);
-            }}
-            onEnd={handleVideoEnd}
-            onLoadStart={() => console.log('Video load started for:', processedVideoUrl)}
-            onBuffer={(buffer) => console.log('Video buffering:', buffer)}
-          />
-        </View>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       <StatusBar hidden />
@@ -252,7 +264,7 @@ const VideoPlayerScreen = ({ route, navigation }) => {
         )}
         <WebView
           ref={webViewRef}
-          source={{ html: getVideoPlayerHTML() }}
+          source={{ html: videoPlayerHTML }}
           style={styles.webView}
           onLoad={handleWebViewLoad}
           onError={handleWebViewError}

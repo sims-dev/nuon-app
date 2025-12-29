@@ -1,30 +1,32 @@
-import React, { useEffect, useContext, useState } from 'react';
+import React, { useEffect, useContext, useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Animated,
   Dimensions,
-  Image,
 } from 'react-native';
+import { InteractionManager } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { NEON_COLORS } from '../utils/colors';
 import { AuthContext } from '../contexts/AuthContext';
+import { NuonLogo } from '../components/NuonLogo';
 
 const { width, height } = Dimensions.get('window');
 
-// Use the app's bundled logo image
-const nuonLogo = require('../assets/logo.png');
-
 const SplashScreen = ({ navigation }) => {
-  const { user } = useContext(AuthContext);
+  const { user, token, loading } = useContext(AuthContext);
   const fadeAnim = new Animated.Value(0);
   const scaleAnim = new Animated.Value(0.3);
   const logoAnim = new Animated.Value(0);
+  const dot1Anim = useRef(new Animated.Value(0)).current;
+  const dot2Anim = useRef(new Animated.Value(0)).current;
+  const dot3Anim = useRef(new Animated.Value(0)).current;
   const [hasNavigated, setHasNavigated] = useState(false);
 
   console.log('Rendering SplashScreen');
   console.log('User Context in SplashScreen:', user);
+  console.log('Token in SplashScreen:', !!token);
 
   useEffect(() => {
     // Start animations
@@ -35,7 +37,7 @@ const SplashScreen = ({ navigation }) => {
         useNativeDriver: true,
       }),
       Animated.spring(scaleAnim, {
-        toValue: 1,
+        toValue: 1.5,
         tension: 10,
         friction: 3,
         useNativeDriver: true,
@@ -47,84 +49,177 @@ const SplashScreen = ({ navigation }) => {
       }),
     ]).start();
 
-    // Always navigate to Onboarding after splash
-    if (!hasNavigated) {
-      const timer = setTimeout(() => {
-        if (!hasNavigated) {
-          setHasNavigated(true);
-          console.log('Navigating to Onboarding');
-          navigation.navigate('Onboarding');
-        }
-      }, 2000);
-      return () => clearTimeout(timer);
+    // Start bouncing dots
+    const startBounce = (anim, delay) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, {
+            toValue: -10,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    };
+
+    setTimeout(() => startBounce(dot1Anim, 0), 500);
+    setTimeout(() => startBounce(dot2Anim, 100), 600);
+    setTimeout(() => startBounce(dot3Anim, 200), 700);
+
+    // Navigate based on auth state
+    if (loading) return;
+
+    if (token && user) {
+      navigation.reset({
+        index: 0,
+        routes: [{
+          name: 'Main',
+          state: {
+            routes: [{
+              name: 'Home'
+            }]
+          }
+        }],
+      });
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Onboarding' }],
+      });
     }
-  }, [user, navigation, hasNavigated]);
+  }, [user, token, loading, navigation, dot1Anim, dot2Anim, dot3Anim]);
+
+  const collaborators = [
+    'Ozone Hospital',
+  ];
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#7C3AED", "#2563EB", "#06B6D4"]}
+        colors={["#9333EA", "#2563EB", "#0891B2"]} // Updated to match Figma: purple-600, blue-600, cyan-600
         style={styles.gradientBackground}
       >
-      {/* Animated floating circles */}
-      <Animated.View
-        style={[
-          styles.floatingCircle1,
-          {
-            opacity: fadeAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.3, 0.6],
-            }),
-            transform: [
+        {/* Animated background elements */}
+        <Animated.View
+          style={[
+            styles.floatingCircle1,
+            {
+              opacity: fadeAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.1, 0.3],
+              }),
+              transform: [
+                {
+                  scale: fadeAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.8, 1.2],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.floatingCircle2,
+            {
+              opacity: fadeAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.05, 0.2],
+              }),
+              transform: [
+                {
+                  scale: fadeAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1.2, 0.8],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.floatingCircle3,
+            {
+              opacity: fadeAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.03, 0.1],
+              }),
+              transform: [
+                {
+                  scale: fadeAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1.1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+
+        <View style={styles.content}>
+          {/* Logo */}
+          <Animated.View
+            style={[
+              styles.logoContainer,
               {
-                scale: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.8, 1.2],
-                }),
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
               },
-            ],
-          },
-        ]}
-      />
-      <Animated.View
-        style={[
-          styles.floatingCircle2,
-          {
-            opacity: fadeAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.2, 0.5],
-            }),
-            transform: [
-              {
-                scale: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1.2, 0.8],
-                }),
-              },
-            ],
-          },
-        ]}
-      />
+            ]}
+          >
+            <NuonLogo variant="black" showTagline={true} taglineColor="#FFFFFF" style={{ transform: [{ scale: 1.2 }] }} />
+          </Animated.View>
 
-      <Animated.View
-        style={[
-          styles.logoContainer,
-          {
-            opacity: fadeAnim,
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      >
-        {/* NUON icon shown above center */}
-        <Image source={nuonLogo} style={styles.iconOnly} resizeMode="contain" />
+          {/* Collaborators */}
+          <Animated.View
+            style={[
+              styles.collaboratorsContainer,
+              { opacity: logoAnim }
+            ]}
+          >
+            <Text style={styles.collabText}>In collaboration with</Text>
+            <View style={styles.collaboratorsList}>
+              {collaborators.map((collab, index) => (
+                <Animated.Text
+                  key={index}
+                  style={[
+                    styles.collaboratorText,
+                    {
+                      opacity: logoAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 1],
+                      }),
+                      transform: [{
+                        translateY: logoAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [20, 0],
+                        }),
+                      }],
+                    },
+                  ]}
+                >
+                  {collab}
+                </Animated.Text>
+              ))}
+            </View>
+          </Animated.View>
+        </View>
 
-        <Animated.View style={{ opacity: logoAnim }}>
-          <Text style={styles.splashLine1}>In collaboration with</Text>
-          <Text style={styles.splashLine2}>Ozone Hospital</Text>
-        </Animated.View>
-      </Animated.View>
-
-      {/* (No footer or dots — splash is a clean logo + collaborator view) */}
+        {/* Loading indicator */}
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingDots}>
+            <Animated.View style={[styles.loadingDot, { transform: [{ translateY: dot1Anim }] }]} />
+            <Animated.View style={[styles.loadingDot, { transform: [{ translateY: dot2Anim }] }]} />
+            <Animated.View style={[styles.loadingDot, { transform: [{ translateY: dot3Anim }] }]} />
+          </View>
+        </View>
       </LinearGradient>
     </View>
   );
@@ -138,65 +233,82 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
   floatingCircle1: {
     position: 'absolute',
-    top: height * 0.2,
-    left: width * 0.1,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: NEON_COLORS.neonPurpleGlow,
-    blurRadius: 64,
+    top: height * 0.25,
+    left: width * 0.25,
+    width: 384, // 96 * 4 for RN
+    height: 384,
+    borderRadius: 192,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   floatingCircle2: {
     position: 'absolute',
-    bottom: height * 0.3,
-    right: width * 0.1,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: NEON_COLORS.neonBlueGlow,
-    blurRadius: 64,
+    bottom: height * 0.25,
+    right: width * 0.25,
+    width: 384,
+    height: 384,
+    borderRadius: 192,
+    backgroundColor: 'rgba(255, 153, 255, 0.2)',
+  },
+  floatingCircle3: {
+    position: 'absolute',
+    top: height * 0.5,
+    left: width * 0.5,
+    width: 256,
+    height: 256,
+    borderRadius: 128,
+    backgroundColor: 'rgba(0, 191, 255, 0.1)',
+    transform: [{ translateX: -128 }, { translateY: -128 }],
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    position: 'relative',
+    zIndex: 10,
   },
   logoContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-    marginTop: -80,
+    marginBottom: 64,
   },
-  iconOnly: {
-    width: 200,
-    height: 110,
-    marginBottom: 20,
-  },
-  splashLine1: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  splashLine2: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginTop: 2,
-    opacity: 0.95,
-  },
-  appName: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: NEON_COLORS.textPrimary,
-    textAlign: 'center',
-    marginBottom: 6,
+  collaboratorsContainer: {
+    marginTop: 64,
   },
   collabText: {
-    color: 'rgba(230,247,255,0.95)',
-    fontSize: 13,
+    color: '#BFDBFE', // blue-100
+    fontSize: 14,
+    marginBottom: 16,
     textAlign: 'center',
-    marginTop: 8,
+  },
+  collaboratorsList: {
+    alignItems: 'center',
+  },
+  collaboratorText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    opacity: 0.8,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  loadingContainer: {
+    position: 'absolute',
+    bottom: 48,
+    left: '50%',
+    transform: [{ translateX: -24 }],
+  },
+  loadingDots: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  loadingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+    // For bouncing animation, we can use Animated.loop with sequence
   },
 });
 

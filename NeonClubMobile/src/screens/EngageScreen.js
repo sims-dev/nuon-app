@@ -3,18 +3,25 @@ import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
-import api from '../services/api';
+import api, { getFullMediaUrl, courseAPI } from '../services/api';
 import { connectSocket, on as onSocket, disconnectSocket } from '../utils/socket';
 import { IP_ADDRESS } from '../../config/ipConfig';
 
 // SVG Icons
 const searchSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`;
+const bookOpenSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`;
 const heartSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
 const activitySvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`;
 const calendarSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
 const clockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
 const mapPinSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
 const usersSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+
+const tabs = [
+  { key: 'wellness', label: 'Wellness', icon: heartSvg },
+  { key: 'fitness', label: 'Fitness', icon: activitySvg },
+  { key: 'conference', label: 'Conference', icon: calendarSvg },
+];
 
 const BASE_URL = `http://${IP_ADDRESS}:5000`;
 const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
@@ -66,37 +73,42 @@ const formatEventDate = (dateString) => {
   }
 };
 
-const EngageScreen = ({ navigation }) => {
-  const [tab, setTab] = useState('wellness');
-  const [query, setQuery] = useState('');
+const EngageScreen = ({ navigation, route }) => {
+    const [query, setQuery] = useState('');
+    const [activities, setActivities] = useState([]);
+    const [enrolledActivities, setEnrolledActivities] = useState([]);
+    const [enrolledCourses, setEnrolledCourses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('wellness'); // 'wellness', 'fitness', 'conference'
 
-  const [wellness, setWellness] = useState([]);
-  const [fitness, setFitness] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+   const fetchData = async () => {
+     try {
+       setLoading(true);
+       const [activitiesRes, enrolledRes, coursesRes] = await Promise.all([
+         api.get('/engage/activities').catch(() => ({ data: { data: [] } })),
+         api.get('/engage/my-registrations').catch(() => ({ data: { registrations: [] } })),
+         courseAPI.getMyCourses().catch(() => ({ data: { courses: [] } }))
+       ]);
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const activitiesRes = await api.get('/engage/activities').catch(() => ({ data: { data: [] } }));
+       let aList = activitiesRes?.data?.data || activitiesRes?.data || [];
+       if (!Array.isArray(aList)) aList = [];
 
-      let aList = activitiesRes?.data?.data || activitiesRes?.data || [];
-      if (!Array.isArray(aList)) aList = [];
+       // Filter to only show wellness, fitness, and conference activities
+       const filteredList = aList.filter(activity =>
+         ['wellness', 'fitness', 'conference'].includes(activity.category)
+       );
 
-      // Separate activities by category
-      const wellnessList = aList.filter(a => a.category === 'wellness');
-      const fitnessList = aList.filter(a => a.category === 'fitness');
-      const eventsList = aList.filter(a => a.category === 'event');
+       let eList = enrolledRes?.data?.registrations || enrolledRes?.data || [];
+       if (!Array.isArray(eList)) eList = [];
 
-      setWellness(wellnessList);
-      setFitness(fitnessList);
-      setEvents(eventsList);
-    } catch (err) {
-      console.log('Engage fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+       setActivities(filteredList);
+       setEnrolledActivities(eList);
+     } catch (err) {
+       console.log('Engage fetch error:', err);
+     } finally {
+       setLoading(false);
+     }
+   };
 
   useEffect(() => {
     fetchData();
@@ -123,20 +135,35 @@ const EngageScreen = ({ navigation }) => {
     return () => { unsubs.forEach((fn) => fn && fn()); disconnectSocket(); };
   }, []);
 
-  const filtered = useMemo(() => {
+  const filteredActivities = useMemo(() => {
     const lq = query.toLowerCase().trim();
-    if (!lq) return { wellness, fitness, events };
-    const filterFn = (arr) => arr.filter((x) => x.title.toLowerCase().includes(lq));
-    return {
-      wellness: filterFn(wellness),
-      fitness: filterFn(fitness),
-      events: filterFn(events),
-    };
-  }, [query, wellness, fitness, events]);
+    let filtered = activities;
+
+    // Filter by tab
+    if (activeTab !== 'all') {
+      filtered = filtered.filter(activity => activity.category === activeTab);
+    }
+
+    if (lq) {
+      filtered = filtered.filter((x) => x.title.toLowerCase().includes(lq));
+    }
+
+    return filtered;
+  }, [query, activities, activeTab]);
 
   const renderWellnessItem = ({ item }) => {
+    const isEnrolled = enrolledActivities.some(reg => reg.activity?._id === item._id || reg.activityId === item._id);
     const handlePress = () => {
-      navigation.navigate('EngageDetails', { item, type: 'wellness' });
+      if (item.price > 0 && !isEnrolled) {
+        navigation.navigate('Payment', {
+          paymentData: {
+            type: 'engage',
+            data: item
+          }
+        });
+      } else {
+        navigation.navigate('EngageDetails', { item, type: 'wellness' });
+      }
     };
 
     const img = item.thumbnail && item.thumbnail.startsWith('/uploads') ? `http://${IP_ADDRESS}:5000${item.thumbnail}` : item.thumbnail;
@@ -163,13 +190,13 @@ const EngageScreen = ({ navigation }) => {
 
         {/* Card Body */}
         <View style={styles.cardBody}>
-          {/* Category Badge */}
-          <View style={[styles.categoryBadge, { backgroundColor: '#FCE7F3' }]}>
-            <SvgXml xml={heartSvg} width={14} height={14} color="#EC4899" />
-            <Text style={[styles.categoryText, { color: '#EC4899' }]}>
-              {item.category}
-            </Text>
-          </View>
+          {/* Category Badge - Matching Figma */}
+           <View style={[styles.categoryBadge, { backgroundColor: '#FCE7F3' }]}>
+             <SvgXml xml={heartSvg} width={14} height={14} color="#EC4899" />
+             <Text style={[styles.categoryText, { color: '#EC4899' }]}>
+               Mental Health
+             </Text>
+           </View>
 
           <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
 
@@ -210,8 +237,18 @@ const EngageScreen = ({ navigation }) => {
   };
 
   const renderFitnessItem = ({ item }) => {
+    const isEnrolled = enrolledActivities.some(reg => reg.activity?._id === item._id || reg.activityId === item._id);
     const handlePress = () => {
-      navigation.navigate('EngageDetails', { item, type: 'fitness' });
+      if (item.price > 0 && !isEnrolled) {
+        navigation.navigate('Payment', {
+          paymentData: {
+            type: 'engage',
+            data: item
+          }
+        });
+      } else {
+        navigation.navigate('EngageDetails', { item, type: 'fitness' });
+      }
     };
 
     const img = item.thumbnail && item.thumbnail.startsWith('/uploads') ? `http://${IP_ADDRESS}:5000${item.thumbnail}` : item.thumbnail;
@@ -238,11 +275,11 @@ const EngageScreen = ({ navigation }) => {
 
         {/* Card Body */}
         <View style={styles.cardBody}>
-          {/* Category Badge */}
+          {/* Category Badge - Matching Figma */}
           <View style={[styles.categoryBadge, { backgroundColor: '#FFEDD5' }]}>
             <SvgXml xml={activitySvg} width={14} height={14} color="#F97316" />
             <Text style={[styles.categoryText, { color: '#F97316' }]}>
-              {item.category}
+              Fitness Challenge
             </Text>
           </View>
 
@@ -282,12 +319,263 @@ const EngageScreen = ({ navigation }) => {
     );
   };
 
+  const renderCoursesItem = ({ item }) => {
+    const handlePress = () => {
+      navigation.navigate('EngageDetails', { item, type: 'course' });
+    };
+
+    const img = item.thumbnail && item.thumbnail.startsWith('/uploads') ? `http://${IP_ADDRESS}:5000${item.thumbnail}` : item.thumbnail;
+
+    return (
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={styles.card}>
+        {/* Hero Image */}
+        <View style={styles.hero}>
+          {img ? <Image source={{ uri: img }} style={styles.heroImg} /> : <Image source={{ uri: 'https://via.placeholder.com/300x200/cccccc/000000?text=No+Image' }} style={styles.heroImg} />}
+          <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]} start={{x:0,y:0}} end={{x:0,y:1}} style={styles.heroOverlay} />
+
+          {/* Enrolled Badge */}
+          <View style={styles.badgeRight}>
+            <Text style={styles.badgeRightText}>{item.enrolled || 0} enrolled</Text>
+          </View>
+
+          {/* FREE Badge */}
+          {item.price === 0 && (
+            <View style={styles.badgeLeft}>
+              <Text style={styles.badgeLeftText}>FREE</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Card Body */}
+        <View style={styles.cardBody}>
+          {/* Category Badge */}
+          <View style={[styles.categoryBadge, { backgroundColor: '#E0F2FE' }]}>
+            <SvgXml xml={bookOpenSvg} width={14} height={14} color="#0369A1" />
+            <Text style={[styles.categoryText, { color: '#0369A1' }]}>Course</Text>
+          </View>
+
+          <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+
+          {/* Meta Information */}
+          <View style={styles.metaSpace}>
+            <View style={styles.metaItem}>
+              <SvgXml xml={clockSvg} width={16} height={16} color="#6B7280" />
+              <Text style={styles.metaText}>{item.duration}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <SvgXml xml={usersSvg} width={16} height={16} color="#6B7280" />
+              <Text style={styles.metaText}>{item.enrolled} enrolled</Text>
+            </View>
+          </View>
+
+          {/* Price and Points */}
+          <View style={styles.priceRow}>
+            <View>
+              {item.price === 0 ? (
+                <Text style={styles.freeText}>Free</Text>
+              ) : (
+                <View style={styles.priceContainer}>
+                  <Text style={styles.rupeeSymbol}>₹</Text>
+                  <Text style={styles.priceText}>{item.price}</Text>
+                </View>
+              )}
+            </View>
+
+            {item.price > 0 && !isEnrolled ? (
+              <TouchableOpacity style={styles.buyButton} onPress={handlePress}>
+                <Text style={styles.buyButtonText}>Buy Now</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.viewButton} onPress={handlePress}>
+                <Text style={styles.viewButtonText}>View Details</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderWorkshopsItem = ({ item }) => {
+    const handlePress = () => {
+      navigation.navigate('EngageDetails', { item, type: 'workshop' });
+    };
+
+    const img = getFullMediaUrl(item.thumbnail);
+
+    return (
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={styles.card}>
+        {/* Hero Image */}
+        <View style={styles.hero}>
+          {img ? <Image source={{ uri: img }} style={styles.heroImg} /> : <Image source={{ uri: 'https://via.placeholder.com/300x200/cccccc/000000?text=No+Image' }} style={styles.heroImg} />}
+          <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]} start={{x:0,y:0}} end={{x:0,y:1}} style={styles.heroOverlay} />
+
+          {/* Seats Left Badge */}
+          <View style={styles.badgeRight}>
+            <Text style={styles.badgeRightText}>{item.capacity - (item.enrolled || 0)} seats left</Text>
+          </View>
+
+          {/* FREE Badge */}
+          {item.price === 0 && (
+            <View style={styles.badgeLeft}>
+              <Text style={styles.badgeLeftText}>FREE</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Card Body */}
+        <View style={styles.cardBody}>
+          {/* Category Badge */}
+          <View style={[styles.categoryBadge, { backgroundColor: '#FEF3C7' }]}>
+            <SvgXml xml={usersSvg} width={14} height={14} color="#D97706" />
+            <Text style={[styles.categoryText, { color: '#D97706' }]}>Workshop</Text>
+          </View>
+
+          <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+
+          {/* Meta Information */}
+          <View style={styles.metaSpace}>
+            <View style={styles.metaItem}>
+              <SvgXml xml={calendarSvg} width={16} height={16} color="#6B7280" />
+              <Text style={styles.metaText}>{formatEventDate(item.date)}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <SvgXml xml={clockSvg} width={16} height={16} color="#6B7280" />
+              <Text style={styles.metaText}>{item.time}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <SvgXml xml={mapPinSvg} width={16} height={16} color="#6B7280" />
+              <Text style={styles.metaText}>{item.location}</Text>
+            </View>
+          </View>
+
+          {/* Price and Points */}
+          <View style={styles.priceRow}>
+            <View>
+              {item.price === 0 ? (
+                <Text style={styles.freeText}>Free</Text>
+              ) : (
+                <View style={styles.priceContainer}>
+                  <Text style={styles.rupeeSymbol}>₹</Text>
+                  <Text style={styles.priceText}>{item.price}</Text>
+                </View>
+              )}
+            </View>
+
+            {item.price > 0 && !isEnrolled ? (
+              <TouchableOpacity style={styles.buyButton} onPress={handlePress}>
+                <Text style={styles.buyButtonText}>Buy Now</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.viewButton} onPress={handlePress}>
+                <Text style={styles.viewButtonText}>View Details</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderConferenceItem = ({ item }) => {
+    const isEnrolled = enrolledActivities.some(reg => reg.activity?._id === item._id || reg.activityId === item._id);
+    const handlePress = () => {
+      if (item.price > 0 && !isEnrolled) {
+        navigation.navigate('Payment', {
+          paymentData: {
+            type: 'engage',
+            data: item
+          }
+        });
+      } else {
+        navigation.navigate('EngageDetails', { item, type: 'conference' });
+      }
+    };
+
+    const img = getFullMediaUrl(item.thumbnail);
+
+    return (
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={styles.card}>
+        {/* Hero Image */}
+        <View style={styles.hero}>
+          {img ? <Image source={{ uri: img }} style={styles.heroImg} /> : <Image source={{ uri: 'https://via.placeholder.com/300x200/cccccc/000000?text=No+Image' }} style={styles.heroImg} />}
+          <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]} start={{x:0,y:0}} end={{x:0,y:1}} style={styles.heroOverlay} />
+
+          {/* Seats Left Badge */}
+          <View style={styles.badgeRight}>
+            <Text style={styles.badgeRightText}>{item.capacity - (item.enrolled || 0)} seats left</Text>
+          </View>
+
+          {/* FREE Badge */}
+          {item.price === 0 && (
+            <View style={styles.badgeLeft}>
+              <Text style={styles.badgeLeftText}>FREE</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Card Body */}
+        <View style={styles.cardBody}>
+          {/* Category Badge - Matching Figma */}
+           <View style={[styles.categoryBadge, { backgroundColor: '#DBEAFE' }]}>
+             <SvgXml xml={calendarSvg} width={14} height={14} color="#1D4ED8" />
+             <Text style={[styles.categoryText, { color: '#1D4ED8' }]}>
+               Conference
+             </Text>
+           </View>
+
+          <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+
+          {/* Meta Information */}
+          <View style={styles.metaSpace}>
+            <View style={styles.metaItem}>
+              <SvgXml xml={calendarSvg} width={16} height={16} color="#6B7280" />
+              <Text style={styles.metaText}>{formatEventDate(item.date)}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <SvgXml xml={clockSvg} width={16} height={16} color="#6B7280" />
+              <Text style={styles.metaText}>{item.time}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <SvgXml xml={mapPinSvg} width={16} height={16} color="#6B7280" />
+              <Text style={styles.metaText}>{item.location}</Text>
+            </View>
+          </View>
+
+          {/* Price and Points */}
+          <View style={styles.priceRow}>
+            <View>
+              {item.price === 0 ? (
+                <Text style={styles.freeText}>Free</Text>
+              ) : (
+                <View style={styles.priceContainer}>
+                  <Text style={styles.rupeeSymbol}>₹</Text>
+                  <Text style={styles.priceText}>{item.price}</Text>
+                </View>
+              )}
+            </View>
+
+            {item.price > 0 && !isEnrolled ? (
+              <TouchableOpacity style={styles.buyButton} onPress={handlePress}>
+                <Text style={styles.buyButtonText}>Buy Now</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.viewButton} onPress={handlePress}>
+                <Text style={styles.viewButtonText}>View Details</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderEventItem = ({ item }) => {
     const handlePress = () => {
       navigation.navigate('EngageDetails', { item, type: 'event' });
     };
 
-    const img = item.thumbnail && item.thumbnail.startsWith('/uploads') ? `http://${IP_ADDRESS}:5000${item.thumbnail}` : item.thumbnail;
+    const img = getFullMediaUrl(item.thumbnail);
 
     return (
       <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={styles.card}>
@@ -313,9 +601,9 @@ const EngageScreen = ({ navigation }) => {
         <View style={styles.cardBody}>
           {/* Category Badge */}
           <View style={[styles.categoryBadge, { backgroundColor: '#DBEAFE' }]}>
-            <SvgXml xml={activitySvg} width={14} height={14} color="#1D4ED8" />
+            <SvgXml xml={calendarSvg} width={14} height={14} color="#1D4ED8" />
             <Text style={[styles.categoryText, { color: '#1D4ED8' }]}>
-              {item.category}
+              {item.category === 'wellness' ? 'Wellness' : item.category === 'fitness' ? 'Fitness' : 'Event'}
             </Text>
           </View>
 
@@ -357,17 +645,33 @@ const EngageScreen = ({ navigation }) => {
     );
   };
 
-  const currentData = tab === 'wellness' ? filtered.wellness : tab === 'fitness' ? filtered.fitness : filtered.events;
-  const renderItem = tab === 'wellness' ? renderWellnessItem : tab === 'fitness' ? renderFitnessItem : renderEventItem;
+  const renderItem = ({ item }) => {
+    switch (item.category) {
+      case 'course':
+        return renderCoursesItem({ item });
+      case 'event':
+        return renderEventItem({ item });
+      case 'workshop':
+        return renderWorkshopsItem({ item });
+      case 'wellness':
+        return renderWellnessItem({ item });
+      case 'fitness':
+        return renderFitnessItem({ item });
+      case 'conference':
+        return renderConferenceItem({ item });
+      default:
+        return renderEventItem({ item });
+    }
+  };
 
   return (
     <View style={styles.safe}>
-      {/* Fixed Header */}
+      {/* Header - Matching Figma */}
       <LinearGradient
         colors={['#9333EA', '#EC4899', '#F97316']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.fixedHeader}
+        style={styles.headerGradient}
       >
         <Text style={styles.headerTitle}>Engage</Text>
 
@@ -376,7 +680,7 @@ const EngageScreen = ({ navigation }) => {
           <SvgXml xml={searchSvg} width={20} height={20} color="rgba(255,255,255,0.6)" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search wellness, fitness, events..."
+            placeholder="Search wellness, fitness, conference..."
             placeholderTextColor="rgba(255,255,255,0.6)"
             value={query}
             onChangeText={setQuery}
@@ -384,57 +688,42 @@ const EngageScreen = ({ navigation }) => {
         </View>
       </LinearGradient>
 
+      {/* Tabs - Matching Figma */}
+      <View style={styles.tabsContainer}>
+        {tabs.map((tab) => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tabButton, activeTab === tab.key && styles.activeTab]}
+            onPress={() => setActiveTab(tab.key)}
+          >
+            <SvgXml xml={tab.icon} width={16} height={16} color={activeTab === tab.key ? '#111827' : '#6B7280'} />
+            <Text style={activeTab === tab.key ? styles.tabTextActive : styles.tabText}>{tab.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Description - Matching Figma */}
+      <Text style={styles.description}>
+        {activeTab === 'wellness' && 'Prioritize your mental health and well-being with our wellness programs'}
+        {activeTab === 'fitness' && 'Stay active and healthy with fitness programs designed for nurses'}
+        {activeTab === 'conference' && 'Join conferences, workshops, and community events for professional growth'}
+      </Text>
+
       {/* Scrollable Content */}
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          {/* Tabs with Icons */}
-          <View style={styles.tabs}>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'wellness' && styles.tabBtnActive]}
-              onPress={() => setTab('wellness')}
-            >
-              <SvgXml xml={heartSvg} width={16} height={16} color={tab === 'wellness' ? '#111827' : '#6B7280'} />
-              <Text style={[styles.tabText, tab === 'wellness' && styles.tabTextActive]}>Wellness</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'fitness' && styles.tabBtnActive]}
-              onPress={() => setTab('fitness')}
-            >
-              <SvgXml xml={activitySvg} width={16} height={16} color={tab === 'fitness' ? '#111827' : '#6B7280'} />
-              <Text style={[styles.tabText, tab === 'fitness' && styles.tabTextActive]}>Fitness</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'events' && styles.tabBtnActive]}
-              onPress={() => setTab('events')}
-            >
-              <SvgXml xml={calendarSvg} width={16} height={16} color={tab === 'events' ? '#111827' : '#6B7280'} />
-              <Text style={[styles.tabText, tab === 'events' && styles.tabTextActive]}>Events</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Description */}
-          <Text style={styles.description}>
-            {tab === 'wellness' && 'Prioritize your mental health and well-being with our wellness programs'}
-            {tab === 'fitness' && 'Stay active and healthy with fitness programs designed for nurses'}
-            {tab === 'events' && 'Join conferences, workshops, and community events for professional growth'}
-          </Text>
-
           {/* List */}
           <View style={styles.list}>
-            {currentData.map((item, index) => (
+            {filteredActivities.map((item, index) => (
               <View key={item.id || index}>
                 {renderItem({ item })}
               </View>
             ))}
-            {currentData.length === 0 && (
-              <View style={styles.empty}>
-                <Text style={styles.emptyText}>
-                  {tab === 'wellness' && 'No wellness activities available'}
-                  {tab === 'fitness' && 'No fitness activities available'}
-                  {tab === 'events' && 'No community events available'}
-                </Text>
-              </View>
-            )}
+            {filteredActivities.length === 0 && (
+               <View style={styles.empty}>
+                 <Text style={styles.emptyText}>No activities available</Text>
+               </View>
+             )}
           </View>
         </View>
       </ScrollView>
@@ -463,6 +752,11 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
   },
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 48 : 48,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+  },
   headerTitle: { color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 16 },
   searchBar: {
     flexDirection: 'row',
@@ -477,15 +771,16 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, color: '#fff', fontSize: 15 },
   content: { flex: 1, paddingHorizontal: 24, paddingTop: 24 },
-  tabs: {
+  tabsContainer: {
     flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    padding: 3,
-    marginBottom: 16,
-    gap: 0,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    padding: 4,
   },
-  tabBtn: {
+  tabButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -493,16 +788,23 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 8,
     paddingHorizontal: 8,
-    borderRadius: 10,
+    borderRadius: 6,
     backgroundColor: 'transparent',
-    borderWidth: 0,
   },
-  tabBtnActive: {
-    backgroundColor: '#FFFFFF',
+  activeTab: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   tabText: { color: '#6B7280', fontSize: 14, fontWeight: '500' },
   tabTextActive: { color: '#111827' },
-  description: { color: '#6B7280', fontSize: 14, marginBottom: 16, lineHeight: 20 },
+  workshopTab: {
+    flex: 1.5, // Make workshops tab wider
+  },
+  description: { color: '#6B7280', fontSize: 14, marginHorizontal: 24, marginBottom: 16, lineHeight: 20 },
   list: { paddingBottom: 24 },
   card: {
     backgroundColor: '#fff',
@@ -572,6 +874,28 @@ const styles = StyleSheet.create({
   priceText: { color: '#111827', fontSize: 15, fontWeight: '600' },
   empty: { alignItems: 'center', paddingVertical: 60 },
   emptyText: { color: '#9CA3AF', fontSize: 15 },
+  buyButton: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  buyButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  viewButton: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  viewButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
 
 export default EngageScreen;

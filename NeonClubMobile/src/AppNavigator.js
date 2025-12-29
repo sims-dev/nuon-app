@@ -1,16 +1,20 @@
 import React, { useEffect, useState, useContext } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { useState as useStateHook, useEffect as useEffectHook } from 'react';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, InteractionManager, Alert } from 'react-native';
 import { SvgXml } from 'react-native-svg';
+import { connectSocket, on as onSocket, disconnectSocket } from './utils/socket';
 
 // Auth Screens
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import ProfileSetupScreen from './screens/ProfileSetupScreen';
 import SplashScreen from './screens/SplashScreen';
+import OnboardingScreen from './screens/OnboardingScreen';
+import OTPAuthScreen from './screens/OTPAuthScreen';
 
 // Main App Screens
 import HomeScreen from './screens/HomeScreen';
@@ -26,28 +30,32 @@ import CourseViewerScreen from './screens/CourseViewerScreen';
 import EventViewerScreen from './screens/EventViewerScreen';
 import MentorAvailabilityScreen from './screens/MentorAvailabilityScreen';
 import CertificationsScreen from './screens/CertificationsScreen';
-import BookingScreen from './screens/BookingScreen';
 import AssessmentScreen from './screens/AssessmentScreen';
 import CatalogScreen from './screens/CatalogScreen';
 import NewsListScreen from './screens/NewsListScreen';
-import NewsViewerScreen from './screens/NewsViewerScreen';
+import NewsDetailScreen from './screens/NewsDetailScreen';
 import VideoPlayerScreen from './screens/VideoPlayerScreen';
-import Payment from './screens/Payment';
+import PaymentScreen from './screens/PaymentScreen';
+import AwardsScreen from './screens/AwardsScreen';
 
 // Mentor Flow Screens
 import MentorProfileScreen from './screens/MentorProfileScreen';
 import BookingSlots from './screens/BookingSlots';
+import BookingScreen from './screens/BookingScreen';
 import SessionPreparation from './screens/SessionPreparation';
 import JoinSessionScreen from './screens/JoinSessionScreen';
 import VideoSession from './screens/VideoSession';
 import SessionFeedback from './screens/SessionFeedback';
-import RescheduleSession from './screens/RescheduleSession';
+import RescheduleSessionScreen from './screens/RescheduleSessionScreen';
+import MySessionsScreen from './screens/MySessionsScreen';
 
 // Context
 import { AuthContext, AuthProvider } from './contexts/AuthContext';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+
+export const navigationRef = createNavigationContainerRef();
 
 // SVG Icons for tabs
 const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
@@ -56,8 +64,14 @@ const engageIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="2
 const mentorIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 const profileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 
-// Auth Navigator Stack
-function AuthStack() {
+// Single Root Stack Navigator
+function RootStack() {
+  const { user, token, loading } = useContext(AuthContext);
+
+  if (loading) {
+    return <SplashScreen />;
+  }
+
   return (
     <Stack.Navigator
       screenOptions={{
@@ -66,112 +80,30 @@ function AuthStack() {
         animationEnabled: false,
       }}
     >
+      {/* Auth Screens */}
       <Stack.Screen name="Splash" component={SplashScreen} />
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+      <Stack.Screen name="OTPAuth" component={OTPAuthScreen} />
+
+      {/* Profile Setup */}
       <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
-    </Stack.Navigator>
-  );
-}
 
-// Main App Tab Navigator
-function AppTabs() {
-   return (
-     <Tab.Navigator
-       screenOptions={({ route }) => ({
-         headerShown: false,
-         animationEnabled: false,
-         tabBarIcon: ({ focused, color, size }) => {
-           let icon;
-           switch (route.name) {
-             case 'Home':
-               icon = homeIcon;
-               break;
-             case 'Learning':
-               icon = learningIcon;
-               break;
-             case 'MyLearning':
-               icon = learningIcon; // Use same icon for now
-               break;
-             case 'Engage':
-               icon = engageIcon;
-               break;
-             case 'Mentor':
-               icon = mentorIcon;
-               break;
-             case 'Profile':
-               icon = profileIcon;
-               break;
-             default:
-               icon = homeIcon;
-           }
-           return <SvgXml xml={icon} width={size} height={size} color={color} />;
-         },
-         tabBarActiveTintColor: '#EC4899',
-         tabBarInactiveTintColor: '#6B7280',
-         tabBarStyle: {
-           backgroundColor: '#1F2937',
-           borderTopColor: '#374151',
-           height: 60,
-           paddingBottom: 8,
-           paddingTop: 8,
-         },
-       })}
-     >
-       <Tab.Screen
-         name="Home"
-         component={HomeScreen}
-         options={{ title: 'Home' }}
-       />
-       <Tab.Screen
-         name="Learning"
-         component={LearningScreen}
-         options={{ title: 'Learning' }}
-       />
-       <Tab.Screen
-         name="MyLearning"
-         component={MyLearningScreen}
-         options={{ title: 'My Learning' }}
-       />
-       <Tab.Screen
-         name="Engage"
-         component={EngageScreen}
-         options={{ title: 'Engage' }}
-       />
-       <Tab.Screen
-         name="Mentor"
-         component={MentorshipScreen}
-         options={{ title: 'Mentors' }}
-       />
-     </Tab.Navigator>
-   );
- }
-
-// App Stack with Modal screens (Course details, booking, etc.)
-function AppStack() {
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        cardStyle: { backgroundColor: '#000' },
-        animationEnabled: false,
-      }}
-    >
+      {/* Main App */}
       <Stack.Group>
         <Stack.Screen
-          name="MainTabs"
+          name="Main"
           component={AppTabs}
-          options={{ animationEnabled: false }}
+          options={{ animationEnabled: true }}
         />
         <Stack.Screen
-          name="JoinSession"
-          component={JoinSessionScreen}
+          name="BookingScreen"
+          component={BookingScreen}
           options={{ headerShown: false }}
         />
       </Stack.Group>
 
       {/* Detail Screens as Modal Stack */}
-      <Stack.Group screenOptions={{ presentation: 'modal', animationEnabled: false }}>
+      <Stack.Group screenOptions={{ presentation: 'modal', animationEnabled: false, lazy: true }}>
         <Stack.Screen
           name="CourseDetail"
           component={CourseDetailScreen}
@@ -185,11 +117,6 @@ function AppStack() {
         <Stack.Screen
           name="EventViewer"
           component={EventViewerScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="Booking"
-          component={BookingScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen
@@ -218,8 +145,8 @@ function AppStack() {
           options={{ headerShown: false }}
         />
         <Stack.Screen
-          name="NewsViewer"
-          component={NewsViewerScreen}
+          name="NewsDetail"
+          component={NewsDetailScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen
@@ -229,7 +156,12 @@ function AppStack() {
         />
         <Stack.Screen
           name="Payment"
-          component={Payment}
+          component={PaymentScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Awards"
+          component={AwardsScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen
@@ -259,12 +191,17 @@ function AppStack() {
         />
         <Stack.Screen
           name="RescheduleSession"
-          component={RescheduleSession}
+          component={RescheduleSessionScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen
-          name="SessionFeedback"
-          component={SessionFeedback}
+          name="MySessions"
+          component={MySessionsScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="JoinSession"
+          component={JoinSessionScreen}
           options={{ headerShown: false }}
         />
       </Stack.Group>
@@ -272,21 +209,92 @@ function AppStack() {
   );
 }
 
-// Root Navigator
-function RootNavigator() {
-  const { token, isLoading } = useContext(AuthContext);
+// Main App Tab Navigator
+function AppTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        animationEnabled: false,
+        lazy: true,
+        tabBarIcon: ({ focused, color, size }) => {
+          let icon;
+          switch (route.name) {
+            case 'Home':
+              icon = homeIcon;
+              break;
+            case 'Learning':
+              icon = learningIcon;
+              break;
+            case 'MyLearning':
+              icon = learningIcon; // Use same icon for now
+              break;
+            case 'Engage':
+              icon = engageIcon;
+              break;
+            case 'Mentor':
+              icon = mentorIcon;
+              break;
+            case 'Profile':
+              icon = profileIcon;
+              break;
+            default:
+              icon = homeIcon;
+          }
+          return <SvgXml xml={icon} width={size} height={size} color={color} />;
+        },
+        tabBarActiveTintColor: '#EC4899',
+        tabBarInactiveTintColor: '#6B7280',
+        tabBarStyle: {
+          backgroundColor: '#1F2937',
+          borderTopColor: '#374151',
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+      })}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{ title: 'Home' }}
+      />
+      <Tab.Screen
+        name="Learning"
+        component={LearningScreen}
+        options={{ title: 'Learning' }}
+      />
+      <Tab.Screen
+        name="MyLearning"
+        component={MyLearningScreen}
+        options={{ title: 'My Learning' }}
+      />
+      <Tab.Screen
+        name="Engage"
+        component={EngageScreen}
+        options={{ title: 'Engage' }}
+      />
+      <Tab.Screen
+        name="Mentor"
+        component={MentorshipScreen}
+        options={{ title: 'Mentorship' }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ title: 'Profile' }}
+      />
+    </Tab.Navigator>
+  );
+}
 
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
-        <ActivityIndicator size="large" color="#EC4899" />
-      </View>
-    );
-  }
+// Root Navigator with single NavigationContainer
+function RootNavigator() {
+  const { user, token, loading } = useContext(AuthContext);
 
   return (
-    <NavigationContainer>
-      {token ? <AppStack /> : <AuthStack />}
+    <NavigationContainer ref={navigationRef}>
+      <RootStack />
     </NavigationContainer>
   );
 }

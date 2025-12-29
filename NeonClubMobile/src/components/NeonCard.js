@@ -3,6 +3,10 @@ import { View, StyleSheet } from 'react-native';
 import { palette, radius, shadow, spacing } from '../theme/tokens';
 
 export const NeonCard = ({ style, children }) => {
+  // Debug log to check if children is text
+  if (typeof children === 'string') {
+    console.log('[NeonCard] Warning: children is string, should be wrapped in <Text>');
+  }
   return <View style={[styles.card, style]}>{children}</View>;
 };
 

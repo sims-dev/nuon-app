@@ -47,7 +47,7 @@ export class AdminContentService {
             // Handle the frontend data structure
             const workshopData: any = {
                 title: body.title,
-                slug: body.slug || body.title.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+                slug: body.slug || `${body.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
                 description: body.description,
                 coverImage: body.coverImage,
                 image: body.coverImage, // Use coverImage as image too

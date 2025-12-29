@@ -14,7 +14,12 @@ import { IP_ADDRESS } from '../../config/ipConfig';
 
 // Helper to get full URL for uploads
 const BASE_URL = `http://${IP_ADDRESS}:5000`;
-const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
+const getFullUrl = (path) => {
+  if (!path) return path;
+  if (path.startsWith('/uploads')) return `${BASE_URL}${path}`;
+  if (path.includes('localhost')) return path.replace('localhost', IP_ADDRESS);
+  return path;
+};
 
 const CourseViewerScreen = ({ route, navigation }) => {
   const { course } = route.params;

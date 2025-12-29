@@ -375,12 +375,17 @@ const ContentManagement = () => {
   };
 
   const handleDelete = async (id, type) => {
+    if (!id) {
+      console.error('No ID provided for delete');
+      setError('Invalid item selected for deletion');
+      return;
+    }
     if (!window.confirm(`Are you sure you want to delete this ${type}?`)) return;
 
     try {
       const endpoint = type === 'news' ? 'news' :
-                       type === 'course' ? 'courses' :
-                       type === 'event' ? 'events' : 'admin/content/workshops';
+                        type === 'course' ? 'courses' :
+                        type === 'event' ? 'events' : 'admin/content/workshops';
 
       console.log('🔍 Debug - Deleting content...');
       console.log('🗑️ Type:', type, 'ID:', id);

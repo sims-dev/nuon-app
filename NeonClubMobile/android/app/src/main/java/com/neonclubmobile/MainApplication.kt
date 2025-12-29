@@ -6,6 +6,9 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import io.invertase.firebase.app.ReactNativeFirebaseAppPackage
+import io.invertase.firebase.auth.ReactNativeFirebaseAuthPackage
+import io.invertase.firebase.messaging.ReactNativeFirebaseMessagingPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -16,18 +19,15 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
+          add(ReactNativeFirebaseAppPackage())
+          add(ReactNativeFirebaseAuthPackage())
+          add(ReactNativeFirebaseMessagingPackage())
         },
     )
   }
 
   override fun onCreate() {
     super.onCreate()
-    // Ensure Firebase default app is initialized early to avoid RN registry errors
-    try {
-      val clazz = Class.forName("com.google.firebase.FirebaseApp")
-      val initialize = clazz.getMethod("initializeApp", android.content.Context::class.java)
-      initialize.invoke(null, this)
-    } catch (_: Throwable) { /* ignore if class not present or already initialized */ }
     loadReactNative(this)
   }
 }

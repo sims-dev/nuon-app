@@ -71,6 +71,8 @@ model User {
     department        String?  @db.VarChar(255)
     hospital          String?  @db.VarChar(255)
     bio               String?  @db.Text
+    expertiseAreas    Json?    @map("expertise_areas")
+    sessionFocus      String?  @db.Text @map("session_focus")
     availability      String?  @db.VarChar(50)
     totalSessions     Int      @default(0) @map("total_sessions")
     rating            Float?   @default(0)
@@ -128,6 +130,7 @@ model User {
    engageRegistrations EngageActivityRegistration[] @relation("engage_registrations")
    engageReviews     EngageActivityReview[] @relation("engage_reviews")
    engageUserProgress EngageUserProgress[]
+   enrollments       Enrollment[]
 
    @@unique([email])
    @@unique([phoneNumber])
@@ -280,6 +283,8 @@ model Course {
      lessonsList    Lesson[]
      userProgress   UserProgress[]
      assessments    Assessment[]
+     enrollments    Enrollment[]
+     payments       Payment[]
 
      @@map("courses")
  }
@@ -444,6 +449,7 @@ model Booking {
   notes                  String?              @db.Text
   zoomLink               String?              @map("zoom_link") @db.VarChar(255)
   status                 String               @default("pending") @db.VarChar(20)
+  rescheduleCount        Int                  @default(0) @map("reschedule_count")
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @default(now()) @updatedAt @map("updated_at")
   nurse                  User                 @relation("booking_nurse", fields: [nurseId], references: [id])
@@ -498,6 +504,7 @@ model Notification {
 model Payment {
   id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
   userId        BigInt   @db.UnsignedBigInt @map("user_id")
+  courseId      BigInt?  @db.UnsignedBigInt @map("course_id")
   amount        Float
   paymentMethod String?  @map("payment_method") @db.VarChar(50)
   transactionId String?  @unique @map("transaction_id") @db.VarChar(255)
@@ -507,6 +514,7 @@ model Payment {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
   user          User     @relation(fields: [userId], references: [id])
+  course        Course?  @relation(fields: [courseId], references: [id])
 
   @@map("payments")
 }
@@ -869,4 +877,23 @@ model EngageUserProgress {
   activity    EngageActivity @relation(fields: [activityId], references: [id])
   @@unique([userId, activityId])
   @@map("engage_user_progress")
+}
+
+model Enrollment {
+  id        BigInt @id @default(autoincrement()) @db.UnsignedBigInt
+  userId    BigInt @db.UnsignedBigInt @map("user_id")
+  courseId  BigInt @db.UnsignedBigInt @map("course_id")
+  enrolledAt DateTime @default(now()) @map("enrolled_at")
+  user      User @relation(fields: [userId], references: [id])
+  course    Course @relation(fields: [courseId], references: [id])
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+model AdminNotification {
+  id        BigInt @id @default(autoincrement()) @db.UnsignedBigInt
+  title     String @db.VarChar(255)
+  message   String @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("admin_notifications")
 }

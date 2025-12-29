@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards, Req } from '@nestjs/common';
 import { CourseService } from '../services/course.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { notifyUser, notifyAdmin } from '../lib/socket';
 
 @Controller('courses')
 export class CourseController {
@@ -75,5 +76,28 @@ export class CourseController {
             throw new Error(`Invalid course ID: ${id}`);
         }
         return this.courseService.deleteCourse(BigInt(id));
+    }
+
+    // New routes for course purchasing functionality
+    @Get(':userId')
+    async getCoursesWithEnrollmentStatus(@Param('userId') userId: string): Promise<any> {
+        if (!userId || isNaN(Number(userId))) {
+            throw new Error(`Invalid user ID: ${userId}`);
+        }
+        return this.courseService.getCoursesWithEnrollmentStatus(BigInt(userId));
+    }
+
+    @Post('payment/demo')
+    async demoPayment(@Body() body: { userId: number; courseId: number }): Promise<any> {
+        const { userId, courseId } = body;
+        return this.courseService.processDemoPayment(userId, courseId);
+    }
+
+    @Get('my-learning/:userId')
+    async getMyLearning(@Param('userId') userId: string): Promise<any> {
+        if (!userId || isNaN(Number(userId))) {
+            throw new Error(`Invalid user ID: ${userId}`);
+        }
+        return this.courseService.getMyLearning(BigInt(userId));
     }
 }

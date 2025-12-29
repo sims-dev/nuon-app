@@ -7,11 +7,19 @@ import { IP_ADDRESS } from '../config/ipConfig';
 @Injectable()
 export class UploadService {
     private uploadDir = path.join(process.cwd(), 'uploads');
+    private videosDir = path.join(this.uploadDir, 'videos');
+    private thumbnailsDir = path.join(this.uploadDir, 'thumbnails');
 
     constructor() {
-        // Create uploads directory if it doesn't exist
+        // Create uploads directories if they don't exist
         if (!fs.existsSync(this.uploadDir)) {
             fs.mkdirSync(this.uploadDir, { recursive: true });
+        }
+        if (!fs.existsSync(this.videosDir)) {
+            fs.mkdirSync(this.videosDir, { recursive: true });
+        }
+        if (!fs.existsSync(this.thumbnailsDir)) {
+            fs.mkdirSync(this.thumbnailsDir, { recursive: true });
         }
 
         // Configure Cloudinary (optional for development)
@@ -111,6 +119,41 @@ export class UploadService {
         }
     }
 
+    async uploadThumbnail(file: any): Promise<any> {
+        try {
+            // Validate file size
+            if (file.size === 0) {
+                throw new Error('Uploaded thumbnail is empty (0 bytes)');
+            }
+
+            let fileName: string;
+            let filePath: string;
+
+            // Check if file is already stored by Multer
+            if (file.path && fs.existsSync(file.path)) {
+                fileName = path.basename(file.path);
+                filePath = file.path;
+            } else if (file.buffer) {
+                fileName = `${Date.now()}-${file.originalname}`;
+                filePath = path.join(this.thumbnailsDir, fileName);
+                fs.writeFileSync(filePath, file.buffer);
+            } else {
+                throw new Error('Uploaded thumbnail is missing path and buffer');
+            }
+
+            const url = `http://${IP_ADDRESS}:5000/uploads/thumbnails/${fileName}`;
+
+            return {
+                success: true,
+                url: url,
+                publicId: fileName,
+                message: 'Thumbnail uploaded successfully'
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
     async uploadVideo(file: any): Promise<any> {
         try {
             // Validate file size
@@ -126,14 +169,16 @@ export class UploadService {
                 fileName = path.basename(file.path);
                 filePath = file.path;
             } else if (file.buffer) {
-                fileName = `${Date.now()}-${file.originalname}`;
-                filePath = path.join(this.uploadDir, fileName);
+                // Add .mp4 extension for proper content-type serving
+                const baseName = `${Date.now()}-${path.parse(file.originalname).name}`;
+                fileName = `${baseName}.mp4`;
+                filePath = path.join(this.videosDir, fileName);
                 fs.writeFileSync(filePath, file.buffer);
             } else {
                 throw new Error('Uploaded video is missing path and buffer');
             }
 
-            const url = `http://${IP_ADDRESS}:5000/uploads/${fileName}`;
+            const url = `http://${IP_ADDRESS}:5000/uploads/videos/${fileName}`;
 
             return {
                 success: true,

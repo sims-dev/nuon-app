@@ -35,6 +35,7 @@ import MentorRegisterScreen from '../screens/MentorRegisterScreen';
 import MentorFeedbackScreen from '../screens/MentorFeedbackScreen';
 import NewsListScreen from '../screens/NewsListScreen';
 import NewsViewerScreen from '../screens/NewsViewerScreen';
+import NewsDetailScreen from '../screens/NewsDetailScreen';
 import VideoPlayerScreen from '../screens/VideoPlayerScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import HelpScreen from '../screens/HelpScreen';
@@ -63,10 +64,16 @@ const AppNavigator = () => {
     );
   }
 
+  // Determine initial route based on user state
+  let initialRoute = 'Splash';
+  if (user) {
+    initialRoute = 'Main';
+  }
+
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName={'Splash'}
+        initialRouteName={initialRoute}
         screenOptions={{
           headerShown: false,
           headerStyle: {
@@ -241,6 +248,11 @@ const AppNavigator = () => {
         <Stack.Screen
           name="NewsViewer"
           component={NewsViewerScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="NewsDetail"
+          component={NewsDetailScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen

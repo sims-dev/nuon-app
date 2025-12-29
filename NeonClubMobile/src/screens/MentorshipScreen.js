@@ -7,10 +7,15 @@ import { SvgXml } from 'react-native-svg';
 import { IP_ADDRESS } from '../config/ipConfig';
 import { mentorAPI } from '../api/mentorAPI';
 import socketService from '../services/socket';
+import ProfileCompletionPrompt from '../components/ProfileCompletionPrompt';
+import { getFullMediaUrl } from '../services/api';
+import { checkProfileCompletion } from '../utils/profileUtils';
 
 
-const BASE_URL = `http://${IP_ADDRESS}:5000`;
-const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
+const getFullUrl = (path) => {
+   if (!path || path === 'null' || path === 'undefined') return 'https://via.placeholder.com/96x96?text=No+Image';
+   return getFullMediaUrl(path);
+ };
 
 const MentorshipScreen = ({ navigation, route }) => {
   const [displayName, setDisplayName] = useState('Priya');
@@ -72,39 +77,75 @@ const MentorshipScreen = ({ navigation, route }) => {
           fetchMentors(); // Refresh mentor list
         }));
 
+        // Listen for availability deleted
+        socketCleanup.push(socketService.on('availability-deleted', (data) => {
+          console.log('Availability deleted:', data);
+          fetchMentors(); // Refresh mentor list
+        }));
+
         // Listen for booking updates
         socketCleanup.push(socketService.on('booking_update', (data) => {
           console.log('Booking update:', data);
-          if (data.type === 'accepted' || data.type === 'rejected' || data.type === 'rescheduled') {
-            fetchMySessions(); // Refresh user's sessions
-          }
+          fetchMySessions(); // Refresh user's sessions
         }));
 
-        // Listen for meeting ready notifications from mentor
-        socketCleanup.push(socketService.on('meeting_ready', (data) => {
-          console.log('Meeting ready notification:', data);
+        // Listen for booking accepted
+        socketCleanup.push(socketService.on('booking_accepted', (data) => {
+          console.log('Booking accepted:', data);
+          fetchMySessions(); // Refresh user's sessions
+        }));
+
+        // Listen for booking rejected
+        socketCleanup.push(socketService.on('booking_rejected', (data) => {
+          console.log('Booking rejected:', data);
+          fetchMySessions(); // Refresh user's sessions
+        }));
+
+        // Listen for booking rescheduled
+        socketCleanup.push(socketService.on('booking_rescheduled', (data) => {
+          console.log('Booking rescheduled:', data);
+          fetchMySessions(); // Refresh user's sessions
+        }));
+
+        // Listen for meeting started notifications from mentor
+        socketCleanup.push(socketService.on('meeting_started', (data) => {
+          console.log('Meeting started notification:', data);
           // Update the session with the meeting link
           setMySessions(prev => prev.map(session =>
-            session.id === data.sessionId
+            session.id === data.bookingId
               ? { ...session, zoomLink: data.meetingLink, status: 'ready' }
               : session
           ));
         }));
 
-        // Listen for mentor joined notifications
-        socketCleanup.push(socketService.on('mentor_joined', (data) => {
-          console.log('Mentor joined session:', data);
-          // Update session status
-          setMySessions(prev => prev.map(session =>
-            session.id === data.sessionId
-              ? { ...session, status: 'in_progress' }
-              : session
-          ));
+        // Listen for user joined session notifications
+        socketCleanup.push(socketService.on('user_joined_session', (data) => {
+          console.log('User joined session:', data);
+          // Update session status if mentor joined
+          if (data.userType === 'mentor') {
+            setMySessions(prev => prev.map(session =>
+              session.id === data.bookingId
+                ? { ...session, status: 'in_progress' }
+                : session
+            ));
+          }
         }));
 
         // Listen for new mentor notifications
         socketCleanup.push(socketService.on('mentor_created', (data) => {
           console.log('New mentor created:', data);
+          fetchMentors(); // Refresh mentor list
+        }));
+
+        // Listen for mentor updated
+        socketCleanup.push(socketService.on('mentor-updated', (data) => {
+          console.log('Mentor updated:', data);
+          fetchMentors(); // Refresh mentor list
+        }));
+
+        // Listen for mentor deleted
+        socketCleanup.push(socketService.on('mentor-deleted', (data) => {
+          console.log('Mentor deleted:', data);
           fetchMentors(); // Refresh mentor list
         }));
 
@@ -150,12 +191,22 @@ const MentorshipScreen = ({ navigation, route }) => {
 
   const handleBookSession = async (mentor) => {
     try {
-      const profile = await AsyncStorage.getItem('nurseProfile');
-      if (!profile || !JSON.parse(profile).fullName || !JSON.parse(profile).email) {
+      // Check if mentor is free (price = 0)
+      const isFreeMentor = mentor.hourlyRate === 0 || mentor.hourlyRate === '0' || mentor.price === 0 || mentor.price === '0';
+
+      if (isFreeMentor) {
+        // Free mentors don't require profile completion
+        navigation.navigate('BookingSlots', { mentor });
+        return;
+      }
+
+      // For paid mentors, check profile completion using centralized utility
+      const profileStatus = await checkProfileCompletion();
+      if (profileStatus.profileIncomplete) {
         setShowProfileModal(true);
         return;
       }
-      // Proceed to booking
+      // Proceed to booking slots screen
       navigation.navigate('BookingSlots', { mentor });
     } catch (error) {
       console.error('Error checking profile:', error);
@@ -218,7 +269,7 @@ const MentorshipScreen = ({ navigation, route }) => {
                 <ActivityIndicator size="large" color="#0891b2" />
               ) : (
                 filteredMentors.map((mentor) => (
-                <View key={mentor.id} style={styles.mentorCard}>
+                <View key={mentor._id || mentor.id} style={styles.mentorCard}>
                   <View style={styles.mentorInfo}>
                     <View style={styles.mentorImageContainer}>
                       <Image
@@ -283,7 +334,7 @@ const MentorshipScreen = ({ navigation, route }) => {
             <View style={styles.sessionList}>
               {mySessions.length > 0 ? (
                 mySessions.map((session) => (
-                  <View key={session.id}>
+                  <View key={session._id || session.id}>
                     <View style={styles.sessionCard}>
                       <View style={styles.sessionInfo}>
                         <View style={styles.sessionImageContainer}>
@@ -364,39 +415,17 @@ const MentorshipScreen = ({ navigation, route }) => {
           )}
         </View>
 
-        {/* Profile Incomplete Modal */}
-        <Modal
-          visible={showProfileModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowProfileModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Complete Your Profile</Text>
-              <Text style={styles.modalMessage}>
-                To book a mentorship session, please complete your profile with your full name and email address.
-              </Text>
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={() => setShowProfileModal(false)}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.completeButton]}
-                  onPress={() => {
-                    setShowProfileModal(false);
-                    navigation.navigate('ProfileSetupScreen');
-                  }}
-                >
-                  <Text style={styles.completeButtonText}>Complete Profile</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        {/* Profile Completion Prompt */}
+        {showProfileModal && (
+          <ProfileCompletionPrompt
+            feature="mentorship sessions"
+            onComplete={() => {
+              setShowProfileModal(false);
+              navigation.navigate('Profile', { screen: 'ProfileEdit' });
+            }}
+            onCancel={() => setShowProfileModal(false)}
+          />
+        )}
     </ScrollView>
   );
 };

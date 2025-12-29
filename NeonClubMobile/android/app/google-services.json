@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "496866331875",
-    "project_id": "napp-5b6cd",
-    "storage_bucket": "napp-5b6cd.firebasestorage.app"
+    "project_number": "126642721808",
+    "project_id": "nuon-app-df3dc",
+    "storage_bucket": "nuon-app-df3dc.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:496866331875:android:f0d4fccabdc050893c49d6",
+        "mobilesdk_app_id": "1:126642721808:android:3c3d0a8a75c1ba1b536695",
         "android_client_info": {
           "package_name": "com.neonclubmobile"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyD0uWfb8pwdCRki6N5JDH3MoAlBafxKmFQ"
+          "current_key": "AIzaSyDuE0v7FGAN9pnC55qyKhy4r7Z0wKhPr4g"
         }
       ],
       "services": {

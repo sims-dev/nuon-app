@@ -12,7 +12,15 @@ import LinearGradient from 'react-native-linear-gradient';
 
 const alertCircleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
 
-const BookingPromptModal = ({ visible, onCompleteNow, onMaybeLater, missingFields = [] }) => {
+const BookingPromptModal = ({
+  visible,
+  onCompleteNow,
+  onMaybeLater,
+  missingFields = [],
+  title = "Complete Your Profile",
+  description = "Please complete your professional information to book mentorship sessions. This helps us provide you with the best experience.",
+  buttonText = "Complete Profile Now →"
+}) => {
   return (
     <Modal
       visible={visible}
@@ -29,12 +37,11 @@ const BookingPromptModal = ({ visible, onCompleteNow, onMaybeLater, missingField
             </View>
 
             {/* Title */}
-            <Text style={styles.profileModalTitle}>Complete Your Profile</Text>
+            <Text style={styles.profileModalTitle}>{title}</Text>
 
             {/* Description */}
             <Text style={styles.profileModalDescription}>
-              Please complete your professional information to book mentorship sessions.
-              This helps us provide you with the best experience.
+              {description}
             </Text>
 
             {/* Missing Information Box */}
@@ -60,7 +67,7 @@ const BookingPromptModal = ({ visible, onCompleteNow, onMaybeLater, missingField
                 style={styles.completeProfileBtnInner}
                 onPress={onCompleteNow}
               >
-                <Text style={styles.completeProfileBtnText}>Complete Profile Now →</Text>
+                <Text style={styles.completeProfileBtnText}>{buttonText}</Text>
               </TouchableOpacity>
             </LinearGradient>
 

@@ -1,39 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Alert, Linking } from 'react-native';
-import { CheckCircle, XCircle, Wifi, Mic, Camera, Clock, Lightbulb, ExternalLink } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { ChevronLeft, Video, Mic, Camera, Check, AlertCircle, Calendar, Clock } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import socketService from '../services/socket';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SessionPreparation = ({ route, navigation }) => {
-  const { session } = route.params;
-  const mentor = { name: session.mentor, image: session.image };
-  const sessionDetails = {
-    topic: session.topic,
-    date: session.date,
-    time: session.time,
-    duration: session.duration
+  const { session } = route.params || {};
+  const [micPermission, setMicPermission] = useState(null);
+  const [cameraPermission, setCameraPermission] = useState(null);
+  const [timeUntilSession, setTimeUntilSession] = useState(120); // 2 minutes countdown
+
+  const sessionData = session || {
+    mentor: 'Dr. Anjali Reddy',
+    topic: 'Advanced Wound Care',
+    date: 'Tomorrow',
+    time: '3:00 PM',
+    duration: '45 mins',
   };
-  const [countdown, setCountdown] = useState(300); // 5 minutes in seconds
-  const [systemChecks, setSystemChecks] = useState({
-    microphone: false,
-    camera: false,
-    internet: false,
-  });
-  const [isReady, setIsReady] = useState(false);
-  const [meetingLink, setMeetingLink] = useState(null);
-  const [meetingStatus, setMeetingStatus] = useState('waiting'); // waiting, ready, joined
-  const [userId, setUserId] = useState(null);
-  const [userName, setUserName] = useState('');
 
   useEffect(() => {
-    // Get user info
-    getUserInfo();
+    // Simulate permission checks
+    const checkPermissions = async () => {
+      setTimeout(() => setMicPermission(true), 500);
+      setTimeout(() => setCameraPermission(true), 1000);
+    };
+    checkPermissions();
 
-    // Start countdown
+    // Countdown timer
     const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
+      setTimeUntilSession(prev => {
+        if (prev <= 0) {
           clearInterval(timer);
           return 0;
         }
@@ -41,301 +36,197 @@ const SessionPreparation = ({ route, navigation }) => {
       });
     }, 1000);
 
-    // Perform system checks
-    performSystemChecks();
-
-    // Connect to socket and listen for real-time updates
-    initializeSocketConnection();
-
-    return () => {
-      clearInterval(timer);
-      // Cleanup socket listeners
-      if (socketService.isSocketConnected()) {
-        socketService.off('meeting_ready', handleMeetingReady);
-        socketService.off('mentor_joined', handleMentorJoined);
-        socketService.off('meeting_started', handleMeetingStarted);
-      }
-    };
+    return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    // Check if all systems are ready
-    const allChecksPassed = Object.values(systemChecks).every(check => check);
-    setIsReady(allChecksPassed && countdown > 0);
-  }, [systemChecks, countdown]);
-
-  const performSystemChecks = async () => {
-    // Simulate system checks
-    setTimeout(() => setSystemChecks(prev => ({ ...prev, microphone: true })), 1000);
-    setTimeout(() => setSystemChecks(prev => ({ ...prev, camera: true })), 2000);
-    setTimeout(() => setSystemChecks(prev => ({ ...prev, internet: true })), 3000);
-  };
-
-  const getUserInfo = async () => {
-    try {
-      const userProfile = await AsyncStorage.getItem('nurseProfile');
-      if (userProfile) {
-        const profile = JSON.parse(userProfile);
-        setUserId(profile.id);
-        setUserName(profile.fullName || profile.name || 'User');
-      }
-    } catch (error) {
-      console.error('Error getting user info:', error);
-    }
-  };
-
-  const initializeSocketConnection = async () => {
-    try {
-      // Connect to socket
-      await socketService.connect();
-
-      // Listen for meeting ready event (when mentor creates Zoom meeting)
-      const cleanup1 = socketService.on('meeting_ready', handleMeetingReady);
-
-      // Listen for mentor joined event
-      const cleanup2 = socketService.on('mentor_joined', handleMentorJoined);
-
-      // Listen for meeting started event
-      const cleanup3 = socketService.on('meeting_started', handleMeetingStarted);
-
-      // Join session room for real-time updates
-      socketService.emit('join_session', {
-        sessionId: session.id,
-        userId: userId,
-        userType: 'nurse'
-      });
-
-    } catch (error) {
-      console.error('Socket connection error:', error);
-    }
-  };
-
-  const handleMeetingReady = (data) => {
-    console.log('Meeting ready:', data);
-    if (data.sessionId === session.id) {
-      setMeetingLink(data.meetingLink);
-      setMeetingStatus('ready');
-      Alert.alert(
-        'Meeting Ready!',
-        'Your mentor has started the Zoom meeting. You can now join the session.',
-        [{ text: 'OK' }]
-      );
-    }
-  };
-
-  const handleMentorJoined = (data) => {
-    console.log('Mentor joined:', data);
-    if (data.sessionId === session.id) {
-      Alert.alert(
-        'Mentor Joined!',
-        'Your mentor is now in the meeting. Click "Join Now" to start your session.',
-        [{ text: 'OK' }]
-      );
-    }
-  };
-
-  const handleMeetingStarted = (data) => {
-    console.log('Meeting started:', data);
-    if (data.sessionId === session.id) {
-      setMeetingStatus('joined');
-    }
-  };
-
-  const handleJoinSession = async () => {
-    if (!isReady) return;
-
-    try {
-      // Notify mentor that user is joining
-      socketService.emit('user_joining', {
-        sessionId: session.id,
-        userId: userId,
-        userName: userName,
-        mentorId: session.mentorId || session.id // Assuming mentor ID is available
-      });
-
-      if (meetingLink && meetingStatus === 'ready') {
-        // Open Zoom meeting link
-        await Linking.openURL(meetingLink);
-        // Navigate to feedback screen after some time (simulating call end)
-        setTimeout(() => {
-          navigation.navigate('SessionFeedback', {
-            session,
-            mentor,
-            userName,
-            userId
-          });
-        }, 30000); // 30 seconds for demo, in real app this would be detected
-      } else {
-        // Fallback to video session screen
-        navigation.navigate('VideoSession', { mentor, sessionDetails });
-      }
-    } catch (error) {
-      console.error('Error joining session:', error);
-      Alert.alert('Error', 'Failed to join session. Please try again.');
-    }
-  };
-
-  const formatTime = (seconds) => {
+  const formatCountdown = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const sessionTips = [
-    "Ensure you're in a quiet environment",
-    "Test your microphone and camera before joining",
-    "Have your questions ready for the session",
-    "Close other applications for better performance",
-  ];
+  const allPermissionsGranted = micPermission && cameraPermission;
+  const canJoin = timeUntilSession <= 300; // Can join 5 minutes before
+
+  const handleJoinSession = () => {
+    navigation.navigate('VideoSession', { session: sessionData });
+  };
 
   return (
-    <LinearGradient colors={['#faf5ff', '#fff']} style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+    <View style={styles.container}>
+      {/* Header */}
+      <LinearGradient
+        colors={['#7C3AED', '#EC4899', '#F97316']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
       >
-        {/* Header Section */}
-        <LinearGradient
-          colors={['#7c3aed', '#ec4899', '#ea580c']}
-          style={styles.header}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
         >
-          <Text style={styles.headerTitle}>Join Session</Text>
-        </LinearGradient>
+          <ChevronLeft size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Join Session</Text>
+      </LinearGradient>
 
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Session Info Card */}
-        <LinearGradient colors={['#faf5ff', '#fdf2f8']} style={styles.sessionCard}>
-          <View style={styles.sessionIcon}>
-            <Text style={styles.sessionIconText}>V</Text>
-          </View>
-          <Text style={styles.sessionTitle}>{sessionDetails.topic}</Text>
-          <Text style={styles.sessionSubtitle}>with {mentor.name}</Text>
-          <View style={styles.sessionGrid}>
-            <View style={styles.sessionGridItem}>
-              <Text style={styles.sessionLabel}>Date</Text>
-              <Text style={styles.sessionValue}>{sessionDetails.date}</Text>
+        <View style={styles.sessionCard}>
+          <View style={styles.sessionCardGradient}>
+            <View style={styles.sessionIcon}>
+              <Video size={40} color="#FFFFFF" />
             </View>
-            <View style={styles.sessionGridItem}>
-              <Text style={styles.sessionLabel}>Time</Text>
-              <Text style={styles.sessionValue}>{sessionDetails.time}</Text>
+            <View style={styles.sessionInfo}>
+              <Text style={styles.sessionTitle}>{sessionData.topic}</Text>
+              <Text style={styles.sessionSubtitle}>with {sessionData.mentor}</Text>
             </View>
-          </View>
-        </LinearGradient>
-
-        {/* Countdown Timer */}
-        <LinearGradient colors={['#dcfce7', '#ecfdf5']} style={styles.countdownCard}>
-          <Text style={styles.countdownLabel}>Session starts in</Text>
-          <Text style={styles.timerText}>{formatTime(countdown)}</Text>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>Ready</Text>
-          </View>
-        </LinearGradient>
-
-        {/* Meeting Link Display */}
-        {meetingLink && (
-          <View style={styles.meetingCard}>
-            <LinearGradient colors={['#3b82f6', '#1d4ed8']} style={styles.meetingCardGradient}>
-              <View style={styles.meetingIcon}>
-                <ExternalLink size={24} color="white" />
+            <View style={styles.sessionMeta}>
+              <View style={styles.metaItem}>
+                <Calendar size={16} color="#6B7280" />
+                <Text style={styles.metaText}>{sessionData.date}</Text>
               </View>
-              <View style={styles.meetingInfo}>
-                <Text style={styles.meetingTitle}>Zoom Meeting Ready!</Text>
-                <Text style={styles.meetingSubtitle}>Your mentor has started the meeting</Text>
+              <View style={styles.metaItem}>
+                <Clock size={16} color="#6B7280" />
+                <Text style={styles.metaText}>{sessionData.time}</Text>
               </View>
-              <TouchableOpacity
-                style={styles.meetingLinkBtn}
-                onPress={() => Linking.openURL(meetingLink)}
-              >
-                <Text style={styles.meetingLinkText}>Open Zoom</Text>
-              </TouchableOpacity>
-            </LinearGradient>
-          </View>
-        )}
-
-        <View style={styles.checksCard}>
-          <Text style={styles.cardTitle}>System Check</Text>
-          <View style={styles.checkItem}>
-            <View style={[styles.checkIcon, { backgroundColor: systemChecks.microphone ? '#10b981' : '#6b7280' }]}>
-              <Mic size={20} color="white" />
             </View>
-            <Text style={styles.checkText}>Microphone</Text>
-            <Text style={styles.checkStatus}>
-              {systemChecks.microphone ? 'Working' : 'Checking...'}
-            </Text>
-          </View>
-          <View style={styles.checkItem}>
-            <View style={[styles.checkIcon, { backgroundColor: systemChecks.camera ? '#10b981' : '#6b7280' }]}>
-              <Camera size={20} color="white" />
-            </View>
-            <Text style={styles.checkText}>Camera</Text>
-            <Text style={styles.checkStatus}>
-              {systemChecks.camera ? 'Working' : 'Checking...'}
-            </Text>
-          </View>
-          <View style={styles.checkItem}>
-            <View style={[styles.checkIcon, { backgroundColor: systemChecks.internet ? '#10b981' : '#6b7280' }]}>
-              <Wifi size={20} color="white" />
-            </View>
-            <Text style={styles.checkText}>Internet</Text>
-            <Text style={styles.checkStatus}>
-              {systemChecks.internet ? 'Connected' : 'Checking...'}
-            </Text>
           </View>
         </View>
 
-        <LinearGradient colors={['#eff6ff', '#faf5ff']} style={styles.tipsCard}>
-          <Text style={styles.tipsTitle}>Session Tips</Text>
-          {sessionTips.map((tip, index) => (
-            <View key={index} style={styles.tipItem}>
-              <Text style={styles.bulletPoint}>•</Text>
-              <Text style={styles.tipText}>{tip}</Text>
+        {/* Countdown Timer */}
+        {canJoin && (
+          <View style={styles.countdownCard}>
+            <Text style={styles.countdownLabel}>Session starts in</Text>
+            <Text style={styles.timerText}>{formatCountdown(timeUntilSession)}</Text>
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusText}>Ready to Join</Text>
             </View>
-          ))}
-        </LinearGradient>
-      </ScrollView>
+          </View>
+        )}
 
-      {/* Fixed Action Buttons at Bottom */}
-      <View style={styles.actionButtons}>
-        <LinearGradient
-          colors={['#16a34a', '#059669']}
-          style={styles.joinButton}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-        >
+        {/* System Check */}
+        <View style={styles.systemCheckCard}>
+          <Text style={styles.cardTitle}>System Check</Text>
+          <View style={styles.checksContainer}>
+            {/* Microphone */}
+            <View style={styles.checkItem}>
+              <View style={[styles.checkIcon, {
+                backgroundColor: micPermission === true ? '#DCFCE7' : micPermission === false ? '#FEF2F2' : '#F3F4F6'
+              }]}>
+                <Mic size={20} color={micPermission === true ? '#16A34A' : micPermission === false ? '#DC2626' : '#9CA3AF'} />
+              </View>
+              <View style={styles.checkInfo}>
+                <Text style={styles.checkText}>Microphone</Text>
+                <Text style={styles.checkStatus}>
+                  {micPermission === true ? 'Working' : micPermission === false ? 'Not accessible' : 'Checking...'}
+                </Text>
+              </View>
+              {micPermission === true && (
+                <Check size={20} color="#16A34A" />
+              )}
+              {micPermission === false && (
+                <AlertCircle size={20} color="#DC2626" />
+              )}
+            </View>
+
+            {/* Camera */}
+            <View style={styles.checkItem}>
+              <View style={[styles.checkIcon, {
+                backgroundColor: cameraPermission === true ? '#DCFCE7' : cameraPermission === false ? '#FEF2F2' : '#F3F4F6'
+              }]}>
+                <Camera size={20} color={cameraPermission === true ? '#16A34A' : cameraPermission === false ? '#DC2626' : '#9CA3AF'} />
+              </View>
+              <View style={styles.checkInfo}>
+                <Text style={styles.checkText}>Camera</Text>
+                <Text style={styles.checkStatus}>
+                  {cameraPermission === true ? 'Working' : cameraPermission === false ? 'Not accessible' : 'Checking...'}
+                </Text>
+              </View>
+              {cameraPermission === true && (
+                <Check size={20} color="#16A34A" />
+              )}
+              {cameraPermission === false && (
+                <AlertCircle size={20} color="#DC2626" />
+              )}
+            </View>
+
+            {/* Internet Connection */}
+            <View style={styles.checkItem}>
+              <View style={styles.checkIconInternet}>
+                <View style={styles.wifiBars}>
+                  <View style={styles.wifiBar} />
+                  <View style={styles.wifiBar} />
+                  <View style={styles.wifiBar} />
+                </View>
+              </View>
+              <View style={styles.checkInfo}>
+                <Text style={styles.checkText}>Internet</Text>
+                <Text style={styles.checkStatus}>Strong connection</Text>
+              </View>
+              <Check size={20} color="#16A34A" />
+            </View>
+          </View>
+        </View>
+
+        {/* Tips */}
+        <View style={styles.tipsCard}>
+          <Text style={styles.tipsTitle}>Session Tips</Text>
+          <View style={styles.tipsList}>
+            <View style={styles.tipItem}>
+              <Text style={styles.bulletPoint}>•</Text>
+              <Text style={styles.tipText}>Find a quiet space with good lighting</Text>
+            </View>
+            <View style={styles.tipItem}>
+              <Text style={styles.bulletPoint}>•</Text>
+              <Text style={styles.tipText}>Keep your camera at eye level</Text>
+            </View>
+            <View style={styles.tipItem}>
+              <Text style={styles.bulletPoint}>•</Text>
+              <Text style={styles.tipText}>Have your questions ready</Text>
+            </View>
+            <View style={styles.tipItem}>
+              <Text style={styles.bulletPoint}>•</Text>
+              <Text style={styles.tipText}>Test your audio before joining</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
           <TouchableOpacity
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-            onPress={() => handleJoinSession()}
-            disabled={!isReady || meetingStatus === 'waiting'}
+            style={[styles.joinButton, (!allPermissionsGranted || !canJoin) && styles.disabledButton]}
+            onPress={handleJoinSession}
+            disabled={!allPermissionsGranted || !canJoin}
           >
+            <Video size={20} color="#FFFFFF" style={styles.joinIcon} />
             <Text style={styles.joinButtonText}>
-              {meetingStatus === 'waiting' ? 'Waiting for Meeting...' :
-               meetingStatus === 'ready' ? 'Join Zoom Meeting' :
-               isReady ? 'Join Session Now' : 'Preparing...'}
+              {canJoin ? 'Join Session Now' : 'Session Not Started Yet'}
             </Text>
           </TouchableOpacity>
-        </LinearGradient>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-      </View>
-    </LinearGradient>
+
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>Back to Sessions</Text>
+          </TouchableOpacity>
+        </View>
+
+        {!allPermissionsGranted && (
+          <Text style={styles.warningText}>
+            ⚠️ Please allow camera and microphone access to join the session
+          </Text>
+        )}
+      </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 120, // Space for fixed buttons
+    backgroundColor: '#F9FAFB',
   },
   header: {
     paddingTop: 48,
@@ -343,205 +234,142 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.1,
-    shadowRadius: 25,
-    elevation: 5,
     alignItems: 'center',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 24,
+    top: 48,
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
+    color: '#FFFFFF',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 24,
+    paddingBottom: 120,
   },
   sessionCard: {
-    marginHorizontal: 24,
-    marginTop: 24,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
     marginBottom: 24,
-    borderRadius: 8,
+  },
+  sessionCardGradient: {
+    backgroundColor: '#FFFFFF',
     padding: 24,
     borderWidth: 2,
-    borderColor: '#e9d5ff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 5,
+    borderColor: '#E9D5FF',
   },
   sessionIcon: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#7C3AED',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 3,
   },
-  sessionIconText: {
-    fontSize: 32,
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  sessionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  sessionSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
+  sessionInfo: {
+    alignItems: 'center',
     marginBottom: 16,
   },
-  sessionGrid: {
+  sessionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  sessionSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  sessionMeta: {
     flexDirection: 'row',
-    gap: 12,
+    justifyContent: 'space-between',
   },
-  sessionGridItem: {
-    flex: 1,
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  sessionLabel: {
+  metaText: {
     fontSize: 14,
-    color: '#6b7280',
-  },
-  sessionValue: {
-    fontSize: 14,
-    color: '#1f2937',
-    fontWeight: '500',
+    color: '#6B7280',
   },
   countdownCard: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 24,
     borderWidth: 2,
-    borderColor: '#16a34a',
+    borderColor: '#16A34A',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 5,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 24,
   },
   countdownLabel: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#6B7280',
     marginBottom: 8,
   },
   timerText: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#16a34a',
+    color: '#16A34A',
     marginBottom: 8,
   },
   statusBadge: {
-    backgroundColor: '#16a34a',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
   statusText: {
     fontSize: 12,
-    color: 'white',
-  },
-  meetingCard: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 5,
-  },
-  meetingCardGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-  },
-  meetingIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  meetingInfo: {
-    flex: 1,
-  },
-  meetingTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 4,
-  },
-  meetingSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  meetingLinkBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  meetingLinkText: {
-    color: 'white',
-    fontSize: 14,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
-  infoCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 20,
-    elevation: 3,
+  systemCheckCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 24,
   },
   cardTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 15,
+    color: '#111827',
+    marginBottom: 16,
   },
-  infoText: {
-    fontSize: 16,
-    color: '#374151',
-    marginBottom: 8,
-  },
-  checksCard: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    borderRadius: 8,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 5,
+  checksContainer: {
+    gap: 12,
   },
   checkItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
-    marginBottom: 8,
   },
   checkIcon: {
     width: 40,
@@ -550,44 +378,68 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkText: {
-    fontSize: 16,
-    color: '#374151',
+  checkIconInternet: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wifiBars: {
+    flexDirection: 'row',
+    gap: 1,
+  },
+  wifiBar: {
+    width: 3,
+    height: 6,
+    backgroundColor: '#16A34A',
+    borderRadius: 1,
+  },
+  checkInfo: {
     flex: 1,
     marginLeft: 12,
   },
+  checkText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
   checkStatus: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 12,
+    color: '#6B7280',
   },
   tipsCard: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 24,
     borderWidth: 2,
-    borderColor: '#3b82f6',
+    borderColor: '#3B82F6',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 5,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 24,
   },
   tipsTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1e40af',
+    color: '#1D4ED8',
     marginBottom: 12,
+  },
+  tipsList: {
+    gap: 8,
   },
   tipItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    marginBottom: 8,
   },
   bulletPoint: {
     fontSize: 14,
-    color: '#374151',
+    color: '#3B82F6',
+    marginTop: 2,
   },
   tipText: {
     fontSize: 14,
@@ -595,27 +447,31 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   actionButtons: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
     gap: 12,
+    marginTop: 24,
   },
   joinButton: {
+    backgroundColor: '#16A34A',
     borderRadius: 50,
     height: 56,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
     elevation: 3,
   },
+  disabledButton: {
+    backgroundColor: '#9CA3AF',
+    shadowColor: '#9CA3AF',
+  },
+  joinIcon: {
+    marginRight: 8,
+  },
   joinButtonText: {
-    color: 'white',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -624,14 +480,20 @@ const styles = StyleSheet.create({
     height: 48,
     backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: '#d1d5db',
+    borderColor: '#D1D5DB',
     alignItems: 'center',
     justifyContent: 'center',
   },
   backButtonText: {
-    color: '#6b7280',
+    color: '#6B7280',
     fontSize: 16,
     fontWeight: '600',
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#DC2626',
+    textAlign: 'center',
+    marginTop: 8,
   },
 });
 

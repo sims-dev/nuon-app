@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-// Ensure Firebase default app is registered on the JS side before any auth calls
-import '@react-native-firebase/app';
+// Firebase app initialized in index.js
 import { StatusBar, LogBox, View, Text, StyleSheet } from 'react-native';
 import AppNavigator from './src/navigation/AppNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { probeAndFixBase } from './src/services/api';
+import { NuonIcon } from './src/components/NuonLogo';
 // import { auth as firebaseAuth } from './src/firebase';
 
 function App() {
@@ -30,6 +30,9 @@ function App() {
   if (!isReady) {
     return (
       <View style={styles.loadingContainer}>
+        <View style={styles.logoCard}>
+          <NuonIcon size={140} variant="default" style={{ tintColor: '#000000' }} />
+        </View>
         <Text style={styles.loadingText}>Initializing...</Text>
       </View>
     );
@@ -50,6 +53,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#0A0A0A',
+  },
+  logoCard: {
+    backgroundColor: 'white',
+    width: 180,
+    height: 180,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+    marginBottom: 20,
   },
   loadingText: {
     color: '#00FFFF',

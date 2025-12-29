@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
-import { Box, Typography, Button, Card, CardContent, Grid, TextField, IconButton, List, ListItem, ListItemText } from '@mui/material';
+import { Box, Typography, Button, Card, CardContent, Grid, TextField, IconButton, List, ListItem, ListItemText, Switch, FormControlLabel } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useAuth } from './AuthContext';
@@ -10,7 +10,7 @@ const Availability = () => {
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [newSlot, setNewSlot] = useState({ title: '', description: '', startDateTime: '', endDateTime: '', duration: 45, maxBookings: 1, price: 0, sessionType: 'mentoring', meetingType: 'zoom', specializations: [] });
+  const [newSlot, setNewSlot] = useState({ title: 'Mentorship Session', description: '', startDate: '', endDate: '', startTime: '', endTime: '', duration: 45, maxBookings: 1, price: 0, sessionType: 'mentoring', meetingType: 'zoom', specializations: [] });
   const { user } = useAuth();
 
   const API_BASE = (process.env.REACT_APP_API_BASE_URL || `http://${IP_ADDRESS}:5000/api`) + '/mentors/mentor';
@@ -38,45 +38,83 @@ const Availability = () => {
   useEffect(() => { fetchAvailability(); }, []);
 
   const handleChange = (e) => {
-    setNewSlot({ ...newSlot, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    let parsedValue = value;
+    if (name === 'maxBookings' || name === 'duration') {
+      parsedValue = parseInt(value, 10) || (name === 'maxBookings' ? 1 : 45);
+    } else if (name === 'price') {
+      parsedValue = parseFloat(value) || 0;
+    }
+    setNewSlot({ ...newSlot, [name]: parsedValue });
   };
 
   const addSlot = async () => {
-    if (newSlot.startDateTime && newSlot.endDateTime && newSlot.duration) {
-      // Basic frontend validation
-      const start = new Date(newSlot.startDateTime);
-      const end = new Date(newSlot.endDateTime);
-      const now = new Date();
+    if (!newSlot.startDate || !newSlot.endDate || !newSlot.startTime || !newSlot.endTime) {
+      setError('All date and time fields are required');
+      return;
+    }
 
-      if (start >= end) {
-        setError('Start time must be before end time');
-        return;
+    // Basic frontend validation
+    const startDate = new Date(newSlot.startDate);
+    const endDate = new Date(newSlot.endDate);
+    const now = new Date();
+
+    if (startDate > endDate) {
+      setError('Start date must be before or equal to end date');
+      return;
+    }
+
+    if (startDate < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+      setError('Start date must be today or in the future');
+      return;
+    }
+
+    // Parse times for validation
+    const [startHour, startMinute] = newSlot.startTime.split(':').map(Number);
+    const [endHour, endMinute] = newSlot.endTime.split(':').map(Number);
+
+    if (startHour > endHour || (startHour === endHour && startMinute >= endMinute)) {
+      setError('Start time must be before end time');
+      return;
+    }
+
+    try {
+      const slotData = {
+        title: newSlot.title,
+        description: newSlot.description,
+        startDate: newSlot.startDate,
+        endDate: newSlot.endDate,
+        startTime: newSlot.startTime,
+        endTime: newSlot.endTime,
+        duration: newSlot.duration,
+        maxBookings: newSlot.maxBookings,
+        price: newSlot.price,
+        sessionType: newSlot.sessionType,
+        meetingType: newSlot.meetingType,
+        specializations: newSlot.specializations
+      };
+
+      const res = await fetch(`${API_BASE}/availability`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        },
+        body: JSON.stringify(slotData)
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to create availability slots');
       }
 
-      if (start <= now) {
-        setError('Start time must be in the future');
-        return;
-      }
-
-      try {
-        const res = await fetch(`${API_BASE}/availability`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-          },
-          body: JSON.stringify(newSlot)
-        });
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.message || 'Failed to add slot');
-        }
-        fetchAvailability();
-        setNewSlot({ title: '', description: '', startDateTime: '', endDateTime: '', duration: 45, maxBookings: 1, price: 0, sessionType: 'mentoring', meetingType: 'zoom', specializations: [] });
-        setError(''); // Clear any previous errors
-      } catch (error) {
-        setError(error.message || 'Failed to add slot');
-      }
+      const result = await res.json();
+      fetchAvailability();
+      setNewSlot({ title: 'Mentorship Session', description: '', startDate: '', endDate: '', startTime: '', endTime: '', duration: 45, maxBookings: 1, price: 0, sessionType: 'mentoring', meetingType: 'zoom', specializations: [] });
+      setError('');
+      alert(result.message || 'Availability slots created successfully');
+    } catch (error) {
+      setError(error.message || 'Failed to create availability slots');
     }
   };
 
@@ -92,6 +130,23 @@ const Availability = () => {
       fetchAvailability();
     } catch {
       setError('Failed to delete slot');
+    }
+  };
+
+  const toggleSlotActive = async (slotId, currentStatus) => {
+    try {
+      const res = await fetch(`${API_BASE}/availability/${slotId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        },
+        body: JSON.stringify({ isActive: !currentStatus })
+      });
+      if (!res.ok) throw new Error('Failed to update slot');
+      fetchAvailability();
+    } catch {
+      setError('Failed to update slot status');
     }
   };
 
@@ -130,26 +185,50 @@ const Availability = () => {
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <TextField
-                      label="Start Date & Time"
-                      name="startDateTime"
-                      type="datetime-local"
-                      value={newSlot.startDateTime}
+                      label="Start Date"
+                      name="startDate"
+                      type="date"
+                      value={newSlot.startDate}
                       onChange={handleChange}
                       InputLabelProps={{ shrink: true }}
-                      inputProps={{ min: new Date().toISOString().slice(0, 16) }}
+                      inputProps={{ min: new Date().toISOString().split('T')[0] }}
                       fullWidth
                       sx={{ mb: 1 }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <TextField
-                      label="End Date & Time"
-                      name="endDateTime"
-                      type="datetime-local"
-                      value={newSlot.endDateTime}
+                      label="End Date"
+                      name="endDate"
+                      type="date"
+                      value={newSlot.endDate}
                       onChange={handleChange}
                       InputLabelProps={{ shrink: true }}
-                      inputProps={{ min: new Date().toISOString().slice(0, 16) }}
+                      inputProps={{ min: newSlot.startDate || new Date().toISOString().split('T')[0] }}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Start Time"
+                      name="startTime"
+                      type="time"
+                      value={newSlot.startTime}
+                      onChange={handleChange}
+                      InputLabelProps={{ shrink: true }}
+                      fullWidth
+                      sx={{ mb: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="End Time"
+                      name="endTime"
+                      type="time"
+                      value={newSlot.endTime}
+                      onChange={handleChange}
+                      InputLabelProps={{ shrink: true }}
                       fullWidth
                       sx={{ mb: 1 }}
                     />
@@ -201,15 +280,27 @@ const Availability = () => {
                 <Typography variant="h6" sx={{ mb: 2, color: 'secondary.main' }}>Your Slots</Typography>
                 <List>
                   {slots.length === 0 && <ListItem><ListItemText primary="No slots added yet." /></ListItem>}
-                  {slots.map((slot) => (
+                  {slots
+                    .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime))
+                    .map((slot) => (
                     <ListItem key={slot.id} secondaryAction={
-                      <IconButton edge="end" color="error" onClick={() => removeSlot(slot.id)}>
-                        <DeleteIcon />
-                      </IconButton>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color={slot.isActive ? "success" : "warning"}
+                          onClick={() => toggleSlotActive(slot.id, slot.isActive)}
+                        >
+                          {slot.isActive ? 'Active' : 'Inactive'}
+                        </Button>
+                        <IconButton edge="end" color="error" onClick={() => removeSlot(slot.id)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
                     }>
                       <ListItemText
-                        primary={`${slot.title} - ${new Date(slot.startDateTime).toLocaleString()}`}
-                        secondary={`Duration: ${slot.duration} min, Price: ₹${slot.price}`}
+                        primary={`${slot.title} - ${new Date(slot.startDateTime).toLocaleDateString()}`}
+                        secondary={`Time: ${new Date(slot.startDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(slot.endDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, Duration: ${slot.duration} min, Price: ₹${slot.price || 0}, Bookings: ${slot.currentBookings}/${slot.maxBookings}`}
                       />
                     </ListItem>
                   ))}

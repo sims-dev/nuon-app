@@ -2,21 +2,22 @@ import { Server } from 'socket.io';
 
 let io: Server;
 
+export const initSocket = (server: any) => {
+  io = new Server(server, { cors: { origin: "*" } });
+};
+
+export const notifyUser = (userId: number, payload: any) => {
+  io.emit(`user_${userId}`, payload);
+};
+
+export const notifyAdmin = (payload: any) => {
+  io.emit("admin_notify", payload);
+};
+
 export function initializeSocket(server: any): Server {
     io = new Server(server, {
         cors: {
-            origin: [
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://localhost:3002",
-                "http://localhost:5000",
-                "http://192.168.0.116:3000",
-                "http://192.168.0.116:3001",
-                "http://192.168.0.3:3000",
-                "http://192.168.0.3:5000",
-                "http://192.168.0.209:3000",
-                "http://192.168.0.209:5000",
-            ],
+            origin: "*", // Allow all origins for development
             credentials: true
         }
     });

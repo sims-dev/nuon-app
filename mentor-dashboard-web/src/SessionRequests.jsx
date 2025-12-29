@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
-import { Box, Typography, Card, CardContent, Button, Grid, Chip, Stack, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert, Snackbar, CircularProgress } from '@mui/material';
+import { Box, Typography, Card, CardContent, Button, Grid, Chip, Stack, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert, Snackbar, CircularProgress, IconButton } from '@mui/material';
 import VideoCallIcon from '@mui/icons-material/VideoCall';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import LinkIcon from '@mui/icons-material/Link';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
 import api from './services/api';
@@ -117,7 +118,7 @@ const SessionRequests = () => {
       await api.acceptBooking(id, token);
       setSnackbar({
         open: true,
-        message: 'Booking accepted successfully',
+        message: 'Booking accepted successfully. Payment confirmed.',
         severity: 'success'
       });
       fetchBookings(); // Refresh bookings
@@ -204,13 +205,46 @@ const SessionRequests = () => {
     }
   };
 
+  const handleJoinSession = async (id) => {
+    try {
+      const response = await api.joinSession(id, token);
+      if (response.success && response.meetingLink) {
+        // Open meeting link in new tab
+        window.open(response.meetingLink, '_blank');
+        setSnackbar({
+          open: true,
+          message: 'Joining session...',
+          severity: 'info'
+        });
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'Meeting link not available',
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      console.error('Error joining session:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to join session',
+        severity: 'error'
+      });
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex' }}>
       <Sidebar />
       <Box component="main" sx={{ flexGrow: 1, p: 5, background: '#101010', minHeight: '100vh' }}>
-        <Typography variant="h4" sx={{ color: 'primary.main', fontWeight: 'bold', mb: 3 }}>
-          Session Requests
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+          <Typography variant="h4" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
+            Session Requests
+          </Typography>
+          <IconButton onClick={fetchBookings} sx={{ color: 'primary.main' }}>
+            <RefreshIcon />
+          </IconButton>
+        </Box>
         <Grid container spacing={3}>
           {loading ? (
             <Grid item xs={12}>
@@ -241,6 +275,7 @@ const SessionRequests = () => {
                     </Stack>
                     <Typography>Date: <b>{new Date(req.dateTime).toLocaleDateString()}</b> at <b>{new Date(req.dateTime).toLocaleTimeString()}</b></Typography>
                     <Typography>Topic: {req.notes || 'Mentorship Session'}</Typography>
+                    <Typography>Price: {req.mentor?.hourlyRate === 0 ? <span style={{ color: '#10b981', fontWeight: 'bold' }}>FREE</span> : <span style={{ color: '#f97316', fontWeight: 'bold' }}>₹{req.mentor?.hourlyRate}</span>}</Typography>
 
                     {/* Meeting Link Display */}
                     {(meetingLinks[req.id] || req.zoomLink) && (
@@ -283,6 +318,7 @@ const SessionRequests = () => {
                       {req.status === 'pending' && <Button variant="contained" color="error" startIcon={<CloseIcon />} onClick={() => handleReject(req.id)}>Reject</Button>}
                       {(req.status === 'pending' || req.status === 'confirmed') && <Button variant="outlined" color="info" startIcon={<ScheduleIcon />} onClick={() => handleRescheduleOpen(req.id)}>Reschedule</Button>}
                       {req.status === 'confirmed' && <Button variant="contained" color="primary" startIcon={<VideoCallIcon />} onClick={() => handleStartSession(req.id)}>Start Session</Button>}
+                      {req.status === 'in_progress' && <Button variant="contained" color="secondary" startIcon={<VideoCallIcon />} onClick={() => handleJoinSession(req.id)}>Join Session</Button>}
                       {req.status === 'in_progress' && <Chip label="SESSION IN PROGRESS" color="primary" />}
                     </Stack>
                   </CardContent>

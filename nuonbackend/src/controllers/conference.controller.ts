@@ -31,6 +31,14 @@ export class ConferenceController {
         return this.conferenceService.getMyConferences(userId);
     }
 
+    // Legacy/frontend-compatible alias used by mobile app
+    @Get('my/conferences')
+    @UseGuards(JwtAuthGuard)
+    async getMyConferencesAlias(@Req() req: any): Promise<any> {
+        const userId = BigInt(req.user.id);
+        return this.conferenceService.getMyConferences(userId);
+    }
+
     @Post()
     @UseGuards(JwtAuthGuard)
     async createConference(@Body() body: any, @Req() req: any): Promise<any> {

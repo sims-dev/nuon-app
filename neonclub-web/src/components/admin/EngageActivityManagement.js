@@ -58,7 +58,7 @@ const EngageActivityManagement = () => {
   const activityTypes = {
     wellness: ['Yoga', 'Meditation', 'Stress Management', 'Mental Health'],
     fitness: ['Gym Session', 'Strength Training', 'Cardio', 'Sports'],
-    event: ['Workshop', 'Seminar', 'Conference', 'Meetup']
+    conference: ['Workshop', 'Seminar', 'Conference', 'Meetup']
   };
 
   const [formData, setFormData] = useState({
@@ -100,7 +100,7 @@ const EngageActivityManagement = () => {
   const loadActivities = async () => {
     try {
       setLoading(true);
-      const category = ['wellness', 'fitness', 'event'][tabValue];
+      const category = ['wellness', 'fitness', 'conference'][tabValue];
 
       const response = await api.get(
         `/admin/engage/activities?category=${category}&page=1&limit=100`
@@ -157,7 +157,7 @@ const EngageActivityManagement = () => {
       setFormData({
         title: '',
         description: '',
-        category: ['wellness', 'fitness', 'event'][tabValue],
+        category: ['wellness', 'fitness', 'conference'][tabValue],
         type: '',
         date: '',
         time: '',
@@ -316,7 +316,7 @@ const EngageActivityManagement = () => {
     setPreviewOpen(true);
   };
 
-  const currentCategory = ['wellness', 'fitness', 'event'][tabValue];
+  const currentCategory = ['wellness', 'fitness', 'conference'][tabValue];
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -347,7 +347,7 @@ const EngageActivityManagement = () => {
         <Tabs value={tabValue} onChange={handleTabChange}>
           <Tab label="🧘 Wellness" />
           <Tab label="💪 Fitness" />
-          <Tab label="🎉 Events" />
+          <Tab label="🎉 Conference" />
         </Tabs>
       </Paper>
 
@@ -435,36 +435,38 @@ const EngageActivityManagement = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Activity Title"
+                label="Activity Title *"
                 name="title"
                 value={formData.title}
                 onChange={handleFormChange}
                 placeholder="e.g., Morning Yoga Session"
+                required
               />
             </Grid>
 
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Description"
+                label="Description *"
                 name="description"
                 value={formData.description}
                 onChange={handleFormChange}
                 multiline
                 rows={3}
                 placeholder="Detailed description of the activity"
+                required
               />
             </Grid>
 
             {/* Category and Type */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Type</InputLabel>
+                <InputLabel>Type *</InputLabel>
                 <Select
                   name="type"
                   value={formData.type}
                   onChange={handleFormChange}
-                  label="Type"
+                  label="Type *"
                 >
                   {activityTypes[formData.category]?.map(type => (
                     <MenuItem key={type} value={type}>{type}</MenuItem>
@@ -476,7 +478,7 @@ const EngageActivityManagement = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Instructor Name"
+                label="Instructor Name *"
                 name="instructorName"
                 value={formData.instructorName}
                 onChange={handleFormChange}
@@ -487,7 +489,7 @@ const EngageActivityManagement = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Date"
+                label="Date *"
                 name="date"
                 type="date"
                 value={formData.date}
@@ -499,7 +501,7 @@ const EngageActivityManagement = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Time"
+                label="Time *"
                 name="time"
                 value={formData.time}
                 onChange={handleFormChange}
@@ -511,7 +513,7 @@ const EngageActivityManagement = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Duration"
+                label="Duration *"
                 name="duration"
                 value={formData.duration}
                 onChange={handleFormChange}
@@ -522,7 +524,7 @@ const EngageActivityManagement = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Location"
+                label="Location *"
                 name="location"
                 value={formData.location}
                 onChange={handleFormChange}
@@ -792,10 +794,10 @@ const EngageActivityManagement = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSaveActivity} 
-            variant="contained" 
-            disabled={loading || !formData.title}
+          <Button
+            onClick={handleSaveActivity}
+            variant="contained"
+            disabled={loading || !formData.title || !formData.description.trim()}
           >
             {loading ? 'Saving...' : editingItem ? 'Update' : 'Create'}
           </Button>

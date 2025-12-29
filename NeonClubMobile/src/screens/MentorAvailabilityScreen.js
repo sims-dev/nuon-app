@@ -4,12 +4,15 @@ import { AuthContext } from '../contexts/AuthContext';
 import { mentorAPI } from '../api/mentorAPI';
 import Button from '../components/Button';
 import { Card } from '../components/Card';
+import BookingPromptModal from '../components/BookingPromptModal';
 
 const MentorAvailabilityScreen = ({ navigation }) => {
   const { token } = useContext(AuthContext);
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [profileComplete, setProfileComplete] = useState(true);
   const [newSlot, setNewSlot] = useState({
     title: '',
     description: '',
@@ -28,14 +31,36 @@ const MentorAvailabilityScreen = ({ navigation }) => {
       setError('');
     } catch (err) {
       console.error('Error fetching availability:', err);
-      setError('Failed to load availability');
+      const message = err.response?.data?.message || err.message || 'Failed to load availability';
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
+  const checkProfileComplete = async () => {
+    try {
+      const response = await mentorAPI.getMentorProfile(token);
+      // Assuming the response has isProfileComplete or we check required fields
+      const profile = response;
+      const isComplete = profile.name && profile.email && profile.specialization && profile.experience && profile.hospital && profile.registrationNumber;
+      setProfileComplete(isComplete);
+      if (!isComplete) {
+        setShowProfilePrompt(true);
+      }
+    } catch (err) {
+      console.error('Error checking profile:', err);
+      const message = err.response?.data?.message || err.message || 'Failed to check profile';
+      // Assume profile is incomplete if we can't check
+      setProfileComplete(false);
+      setShowProfilePrompt(true);
+      Alert.alert('Profile Check Error', message);
+    }
+  };
+
   useEffect(() => {
     fetchAvailability();
+    checkProfileComplete();
   }, []);
 
   const handleChange = (field, value) => {
@@ -65,7 +90,8 @@ const MentorAvailabilityScreen = ({ navigation }) => {
       }
     } catch (err) {
       console.error('Error adding slot:', err);
-      Alert.alert('Error', 'Failed to add availability slot');
+      const message = err.response?.data?.message || err.message || 'Failed to add availability slot';
+      Alert.alert('Error', message);
     }
   };
 
@@ -85,7 +111,8 @@ const MentorAvailabilityScreen = ({ navigation }) => {
               Alert.alert('Success', 'Availability slot deleted');
             } catch (err) {
               console.error('Error deleting slot:', err);
-              Alert.alert('Error', 'Failed to delete availability slot');
+              const message = err.response?.data?.message || err.message || 'Failed to delete availability slot';
+              Alert.alert('Error', message);
             }
           }
         }
@@ -196,6 +223,19 @@ const MentorAvailabilityScreen = ({ navigation }) => {
           ))
         )}
       </Card>
+
+      <BookingPromptModal
+        visible={showProfilePrompt}
+        onCompleteNow={() => {
+          setShowProfilePrompt(false);
+          navigation.navigate('Profile'); // Assuming there's a Profile screen
+        }}
+        onMaybeLater={() => setShowProfilePrompt(false)}
+        title="Complete Your Mentor Profile"
+        description="Please complete your professional information to manage availability and provide mentorship sessions. This helps us match you with the right mentees."
+        buttonText="Complete Profile Now →"
+        missingFields={['Specialization', 'Experience', 'Hospital', 'Registration Number']}
+      />
     </ScrollView>
   );
 };
@@ -203,7 +243,7 @@ const MentorAvailabilityScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%)',
     padding: 16,
   },
   title: {
@@ -212,36 +252,65 @@ const styles = StyleSheet.create({
     color: '#00FFFF',
     textAlign: 'center',
     marginBottom: 20,
+    textShadowColor: '#00FFFF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   card: {
     marginBottom: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+    backdropFilter: 'blur(10px)',
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#EC4899',
     marginBottom: 16,
+    textShadowColor: '#EC4899',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 5,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#374151',
-    backgroundColor: '#1F2937',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#FFFFFF',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 12,
     fontSize: 16,
+    backdropFilter: 'blur(5px)',
   },
   addButton: {
     marginTop: 16,
+    backgroundColor: 'linear-gradient(135deg, #3b82f6 0%, #7c3aed 100%)',
+    borderRadius: 25,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   errorText: {
     color: '#EF4444',
     marginTop: 8,
+    textShadowColor: '#EF4444',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 3,
   },
   noSlotsText: {
     color: '#6B7280',
     fontStyle: 'italic',
+    textAlign: 'center',
+    padding: 20,
   },
   slotItem: {
     flexDirection: 'row',
@@ -249,7 +318,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#374151',
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   slotInfo: {
     flex: 1,
@@ -259,6 +328,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
+    textShadowColor: '#FFFFFF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 2,
   },
   slotDetails: {
     fontSize: 14,
@@ -268,7 +340,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 4,
+    borderRadius: 8,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   deleteButtonText: {
     color: '#FFFFFF',
@@ -279,6 +356,9 @@ const styles = StyleSheet.create({
     color: '#00FFFF',
     fontSize: 18,
     textAlign: 'center',
+    textShadowColor: '#00FFFF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 5,
   },
 });
 

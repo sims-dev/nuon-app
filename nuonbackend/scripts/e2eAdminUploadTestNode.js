@@ -3,7 +3,7 @@ const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 
-const BASE = 'http://192.168.0.209:5000';
+const BASE = 'http://localhost:5000';
 (async () => {
   try {
     const tmpDir = path.join(__dirname, '..', 'tmp');

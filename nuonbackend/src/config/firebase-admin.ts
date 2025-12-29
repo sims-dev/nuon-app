@@ -9,7 +9,7 @@ function initFirebaseAdmin(): typeof admin {
 
   try {
     // Try to initialize with service account file
-    const serviceAccountPath = path.resolve(__dirname, 'service-account-key.json');
+    const serviceAccountPath = path.resolve(process.cwd(), 'src/config/napp-5b6cd-firebase-adminsdk.json');
 
     if (fs.existsSync(serviceAccountPath)) {
       const serviceAccount = require(serviceAccountPath);

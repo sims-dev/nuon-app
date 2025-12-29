@@ -11,6 +11,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import HistoryIcon from '@mui/icons-material/History';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from './AuthContext';
@@ -20,6 +21,7 @@ const navItems = [
   { text: 'Profile', icon: <PersonIcon />, path: '/mentor/profile' },
   { text: 'Availability', icon: <EventAvailableIcon />, path: '/mentor/availability' },
   { text: 'Session Requests', icon: <ListAltIcon />, path: '/mentor/sessions' },
+  { text: 'My Sessions', icon: <ScheduleIcon />, path: '/mentor/my-sessions' },
   { text: 'Session History', icon: <HistoryIcon />, path: '/mentor/history' },
   { text: 'Notifications', icon: <NotificationsIcon />, path: '/mentor/notifications' },
 ];

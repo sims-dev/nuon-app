@@ -14,7 +14,12 @@ import {
   BadRequestException,
   NotFoundException,
   ParseIntPipe,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { UploadService } from '../services/upload.service';
 import { EngageService } from '../services/engage.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import {
@@ -27,7 +32,10 @@ import {
 
 @Controller('engage')
 export class EngageController {
-  constructor(private readonly engageService: EngageService) {}
+  constructor(
+    private readonly engageService: EngageService,
+    private readonly uploadService: UploadService
+  ) {}
 
   /**
    * Get all engage activities with optional filtering
@@ -37,15 +45,17 @@ export class EngageController {
   async getActivities(
     @Query('category') category?: EngageActivityCategory,
     @Query('status') status?: string,
-    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
-    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     try {
+      const parsedPage = page ? parseInt(page, 10) : 1;
+      const parsedLimit = limit ? parseInt(limit, 10) : 10;
       return await this.engageService.getActivities(
         category,
         status,
-        page || 1,
-        limit || 10,
+        parsedPage,
+        parsedLimit,
       );
     } catch (error) {
       throw new HttpException(
@@ -106,16 +116,84 @@ export class EngageController {
    */
   @Post('activities')
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'image', maxCount: 1 },
+    { name: 'thumbnail', maxCount: 1 },
+    { name: 'videoFile', maxCount: 1 },
+    { name: 'videoThumbnail', maxCount: 1 }
+  ], {
+    storage: diskStorage({
+      destination: './uploads',
+      filename: (req, file, cb) => {
+        const uniqueName = `${Date.now()}-${file.originalname}`;
+        cb(null, uniqueName);
+      }
+    }),
+    limits: {
+      fileSize: 500 * 1024 * 1024, // 500MB
+    }
+  }))
   async createActivity(
-    @Body() createDto: CreateEngageActivityDto,
-    @Req() req: any,
+    @UploadedFiles() files: { [fieldname: string]: Express.Multer.File[] },
+    @Body() body: CreateEngageActivityDto,
+    @Req() request: any,
   ) {
     try {
-      const creatorId = req.user?.id || req.user?.sub;
+      const creatorId = request.user?.id || request.user?.sub;
       if (!creatorId) {
         throw new BadRequestException('User ID is required');
       }
-      return await this.engageService.createActivity(createDto, Number(creatorId));
+
+      // Normalize uploaded files
+      const normalizeFiles = (rawFiles: any, reqObj: any) => {
+        const map: { [k: string]: Express.Multer.File[] } = {};
+        const source = rawFiles || reqObj?.files || {};
+
+        // If req.file exists (single file), map it by its fieldname
+        if (reqObj?.file) {
+          const f = reqObj.file;
+          if (f && f.fieldname) map[f.fieldname] = [f];
+        }
+
+        // If source is an object mapping field->file/array, normalize arrays
+        if (source && typeof source === 'object') {
+          Object.keys(source).forEach((key) => {
+            const val = source[key];
+            if (!val) return;
+            if (Array.isArray(val)) map[key] = val;
+            else map[key] = [val];
+          });
+        }
+
+        return map;
+      };
+
+      const filesMap = normalizeFiles(files, request);
+
+      // Convert date to ISO string
+      if (body.date) {
+        body.date = body.date + 'T00:00:00.000Z';
+      }
+
+      // Attach uploaded URLs to body if present
+      if (filesMap.image && filesMap.image[0]) {
+        const img = await this.uploadService.uploadImage(filesMap.image[0]);
+        body.image = img.url;
+      }
+      if (filesMap.thumbnail && filesMap.thumbnail[0]) {
+        const thumb = await this.uploadService.uploadImage(filesMap.thumbnail[0]);
+        body.thumbnail = thumb.url;
+      }
+      if (filesMap.videoFile && filesMap.videoFile[0]) {
+        const video = await this.uploadService.uploadVideo(filesMap.videoFile[0]);
+        body.videoUrl = video.url;
+      }
+      if (filesMap.videoThumbnail && filesMap.videoThumbnail[0]) {
+        const vthumb = await this.uploadService.uploadThumbnail(filesMap.videoThumbnail[0]);
+        body.videoThumbnail = vthumb.url;
+      }
+
+      return await this.engageService.createActivity(body, Number(creatorId));
     } catch (error) {
       throw new HttpException(
         { success: false, message: (error as Error).message },

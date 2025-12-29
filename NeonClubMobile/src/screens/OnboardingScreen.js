@@ -1,4 +1,4 @@
-import React, { useState, useRef, useContext } from 'react';
+import React, { useState, useRef, useContext, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  ImageBackground,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { AuthContext } from '../contexts/AuthContext';
@@ -28,50 +29,50 @@ const slides = [
     title: 'Learn & Grow',
     description:
       'Access exclusive courses, workshops, and training programs designed specifically for nursing professionals.',
-    // gradient-only slide (no background image)
-    Icon: () => <SvgXml xml={graduationCapSvg} width={56} height={56} color="#FFFFFF" />,
-    colors: ['rgba(168,85,247,0.86)', 'rgba(255,106,61,0.7)'],
+    Icon: () => <SvgXml xml={graduationCapSvg} width={64} height={64} color="#FFFFFF" />,
+    colors: ['rgba(168,85,247,0.9)', 'rgba(59,130,246,0.9)'],
+    image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxudXJzZSUyMGxlYXJuaW5nJTIwZWR1Y2F0aW9ufGVufDF8fHx8MTc2MDM1MDEyMHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
   },
   {
     key: 'events',
     title: 'Events & Workshops',
     description:
       'Participate in live events, webinars, and hands-on workshops with industry experts and peers.',
-    // gradient-only slide (no background image)
-    Icon: () => <SvgXml xml={calendarSvg} width={56} height={56} color="#FFFFFF" />,
-    colors: ['rgba(236,72,153,0.85)', 'rgba(139,92,246,0.8)'],
+    Icon: () => <SvgXml xml={calendarSvg} width={64} height={64} color="#FFFFFF" />,
+    colors: ['rgba(236,72,153,0.9)', 'rgba(139,92,246,0.9)'],
+    image: 'https://images.unsplash.com/photo-1511578314322-379afb476865?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtZWRpY2FsJTIwd29ya3Nob3AlMjBjb2xsYWJvcmF0aW9ufGVufDF8fHx8MTc2MDM1MDEyMHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
   },
   {
     key: 'mentor',
     title: 'Expert Mentorship',
     description: 'Connect with experienced mentors for personalized guidance and career development support.',
-    // gradient-only slide (no background image)
-    Icon: () => <SvgXml xml={usersSvg} width={56} height={56} color="#FFFFFF" />,
-    colors: ['rgba(3,169,244,0.85)', 'rgba(6,182,212,0.7)'],
+    Icon: () => <SvgXml xml={usersSvg} width={64} height={64} color="#FFFFFF" />,
+    colors: ['rgba(6,182,212,0.9)', 'rgba(59,130,246,0.9)'],
+    image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBtZW50b3JzaGlwJTIwY29hY2hpbmd8ZW58MXx8fHwxNzYwMzUwMTIxfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
   },
   {
     key: 'champ',
     title: 'Become a Champion',
     description: 'Complete the Nightingale Programme and earn certification as a Neon Club Champion Mentor.',
-    // gradient-only slide (no background image)
-    Icon: () => <SvgXml xml={awardSvg} width={56} height={56} color="#FFFFFF" />,
-    colors: ['rgba(249,115,22,0.86)', 'rgba(236,72,153,0.7)'],
+    Icon: () => <SvgXml xml={awardSvg} width={64} height={64} color="#FFFFFF" />,
+    colors: ['rgba(249,115,22,0.9)', 'rgba(236,72,153,0.9)'],
+    image: 'https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhY2hpZXZlbWVudCUyMHRyb3BoeSUyMHN1Y2Nlc3N8ZW58MXx8fHwxNzYwMzUwMTIyfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
   },
   {
     key: 'rewards',
     title: 'Earn Rewards',
     description: 'Get reward points for every activity, course completion, and engagement. Redeem for exclusive benefits!',
-    // gradient-only slide (no background image)
-    Icon: () => <SvgXml xml={giftSvg} width={56} height={56} color="#FFFFFF" />,
-    colors: ['rgba(255,153,0,0.86)', 'rgba(255,94,0,0.7)'],
+    Icon: () => <SvgXml xml={giftSvg} width={64} height={64} color="#FFFFFF" />,
+    colors: ['rgba(255,193,7,0.9)', 'rgba(255,87,34,0.9)'],
+    image: 'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxnaWZ0JTIwcmV3YXJkcyUyMGNlbGVicmF0aW9ufGVufDF8fHx8MTc2MDM1MDEyMnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
   },
   {
     key: 'career',
     title: 'Advance Your Career',
     description: 'Build your professional profile, track your growth, and unlock new opportunities in healthcare.',
-    // gradient-only slide (no background image)
-    Icon: () => <SvgXml xml={trendingUpSvg} width={56} height={56} color="#FFFFFF" />,
-    colors: ['rgba(16,185,129,0.86)', 'rgba(5,150,105,0.75)'],
+    Icon: () => <SvgXml xml={trendingUpSvg} width={64} height={64} color="#FFFFFF" />,
+    colors: ['rgba(76,175,80,0.9)', 'rgba(0,150,136,0.9)'],
+    image: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXJlZXIlMjBncm93dGglMjBkZXZlbG9wbWVudHxlbnwxfHx8fDE3NjAzNTAxMjN8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
   },
 ];
 
@@ -86,18 +87,22 @@ const OnboardingScreen = ({ navigation }) => {
 
   const { user } = useContext(AuthContext);
 
+
   const goNext = () => {
     if (current < slides.length - 1) {
       scrollRef.current.scrollTo({ x: (current + 1) * width, animated: true });
     } else {
-      // final action: always navigate to OTP
+      // final action: navigate to OTPAuth
       navigation.replace('OTPAuth');
     }
   };
 
-  const skip = () => {
+  const skipOnboarding = () => {
+    console.log('[Onboarding] Skip onboarding clicked');
+    // Skip to OTPAuth directly
     navigation.replace('OTPAuth');
   };
+
 
   return (
     <View style={styles.container}>
@@ -111,27 +116,34 @@ const OnboardingScreen = ({ navigation }) => {
       >
         {slides.map((s, i) => (
           <View key={s.key} style={styles.slide}>
-            {/* gradient-only slide (no image) */}
-            <LinearGradient
-              colors={s.colors || ['rgba(124,58,237,0.85)', 'rgba(37,99,235,0.7)']}
-              style={styles.overlay}
-            />
+            <ImageBackground
+              source={{ uri: s.image }}
+              style={styles.backgroundImage}
+              resizeMode="cover"
+            >
+              <LinearGradient
+                colors={s.colors || ['rgba(124,58,237,0.9)', 'rgba(37,99,235,0.9)']}
+                style={styles.overlay}
+              />
 
-            <View style={styles.topContent}>
-              <View style={styles.iconContainer}>
-                {s.Icon ? <s.Icon /> : null}
+              <View style={styles.centerContent}>
+                <View style={styles.textContainer}>
+                  <View style={styles.iconContainer}>
+                    {s.Icon ? <s.Icon /> : null}
+                  </View>
+
+                  <Text style={styles.title}>{s.title}</Text>
+
+                  <Text style={styles.description}>{s.description}</Text>
+                </View>
               </View>
-
-              <Text style={styles.smallTitle}>{s.title}</Text>
-
-              {/* Description shown under the title */}
-              <Text style={styles.description}>{s.description}</Text>
-            </View>
+            </ImageBackground>
           </View>
         ))}
       </ScrollView>
 
       <View style={styles.bottomSheet}>
+        {console.log('[Onboarding] Current slide:', current, 'Show skip:', current !== slides.length - 1)}
         <View style={styles.dotsRowCentered}>
           {slides.map((_, idx) => (
             idx === current ? (
@@ -145,19 +157,23 @@ const OnboardingScreen = ({ navigation }) => {
             )
           ))}
         </View>
+<TouchableOpacity style={styles.nextBtn} onPress={goNext} activeOpacity={0.9}>
+  <LinearGradient colors={[ '#A855F7', '#FF6A3D' ]} style={styles.nextGradient}>
+    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+      <Text style={styles.nextText}>{current === slides.length -1 ? 'Get Started' : 'Next'}</Text>
+      {current !== slides.length -1 && <SvgXml xml={chevronRightSvg} width={16} height={16} color="#fff" style={{marginLeft: 8}} />}
+    </View>
+  </LinearGradient>
+</TouchableOpacity>
 
-        <TouchableOpacity style={styles.nextBtn} onPress={goNext} activeOpacity={0.9}>
-          <LinearGradient colors={[ '#A855F7', '#FF6A3D' ]} style={styles.nextGradient}>
-            <View style={{flexDirection: 'row', alignItems: 'center'}}>
-              <Text style={styles.nextText}>{current === slides.length -1 ? 'Get Started' : 'Next'}</Text>
-              {current !== slides.length -1 && <SvgXml xml={chevronRightSvg} width={16} height={16} color="#fff" style={{marginLeft: 8}} />}
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
+{current !== slides.length - 1 && (
+  <TouchableOpacity style={styles.skipLink} onPress={skipOnboarding} activeOpacity={0.7}>
+    <Text style={styles.skipLinkText}>Skip</Text>
+  </TouchableOpacity>
+)}
 
-        <TouchableOpacity onPress={skip} style={styles.skipLink}>
-          <Text style={styles.skipLinkText}>Skip</Text>
-        </TouchableOpacity>
+
+
       </View>
     </View>
   );
@@ -173,59 +189,67 @@ const styles = StyleSheet.create({
     height,
     justifyContent: 'space-between',
   },
+  backgroundImage: {
+    flex: 1,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.8,
-  },
-  topContent: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    paddingTop: 50,
+    opacity: 0.9,
   },
   centerContent: {
     flex: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 50,
+  },
+  textContainer: {
+    alignItems: 'center',
+    maxWidth: 320,
+  },
+  iconBg: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 28,
-  },
-  topSubtitle: {
-    color: 'rgba(255,255,255,0.95)',
-    marginTop: 12,
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 1,
   },
   iconContainer: {
-    width: 110,
-    height: 110,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: 128,
+    height: 128,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.3)',
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '600',
-    marginBottom: 12,
-  },
-  smallTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 12,
-    marginBottom: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   description: {
     color: 'rgba(255,255,255,0.95)',
     textAlign: 'center',
-    lineHeight: 22,
-    fontSize: 16,
+    lineHeight: 28,
+    fontSize: 18,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    paddingHorizontal: 16,
   },
   bottomSheet: {
     backgroundColor: '#fff',
@@ -239,11 +263,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  progressRow: {
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 0,
-  },
   dotsRowCentered: {
     flexDirection: 'row',
     marginTop: 12,
@@ -251,24 +270,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
-  dotsRow: {
-    flexDirection: 'row',
-    marginTop: 6,
-  },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#E6E6E6',
     marginHorizontal: 6,
   },
-  dotActive: {
-    backgroundColor: '#A855F7',
-  },
   activePill: {
-    width: 48,
-    height: 8,
-    borderRadius: 8,
+    width: 32,
+    height: 6,
+    borderRadius: 3,
     marginHorizontal: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

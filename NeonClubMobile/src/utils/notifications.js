@@ -5,7 +5,7 @@ import api from '../services/api';
 export async function registerPushTokenIfAvailable() {
   let messaging;
   try {
-    // eslint-disable-next-line global-require
+     
     messaging = require('@react-native-firebase/messaging').default;
   } catch (e) {
     return null; // package not installed or not linked

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Put, Param } from '@nestjs/common';
 import { NotificationService } from '../services/notification.service';
 
 @Controller('notifications')
@@ -13,5 +13,10 @@ export class NotificationController {
     @Get()
     async listNotifications(@Query('userId') userId?: string): Promise<any> {
         return this.notificationService.listNotifications(userId);
+    }
+
+    @Put(':id/read')
+    async markAsRead(@Param('id') id: string): Promise<any> {
+        return this.notificationService.markAsRead(id);
     }
 }

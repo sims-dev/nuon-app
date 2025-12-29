@@ -1,22 +1,87 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Image, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
-import { BookOpen, Calendar, Clock, Play, CheckCircle, Users, Heart, Download, ChevronRight, Video } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, Image, ScrollView, StyleSheet } from 'react-native';
+import { BookOpen, Calendar, Clock, Play, CheckCircle, Users, Heart, Download, ChevronRight, Video, ChevronLeft } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
-import { courseAPI, eventAPI, workshopAPI, conferenceAPI } from '../services/api';
-import { IP_ADDRESS } from '../config/ipConfig';
+import { SvgXml } from 'react-native-svg';
+import { CommonActions } from '@react-navigation/native';
+import { connectSocket, on as onSocket, disconnectSocket } from '../utils/socket';
+
+import api, { courseAPI, eventAPI, workshopAPI, conferenceAPI, assessmentAPI, mentorAPI, getFullMediaUrl } from '../services/api';
+import { IP_ADDRESS } from '../../config/ipConfig';
+
+const homeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
+const bookOpenSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`;
+const usersSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+const heartSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>`;
+
+const TabIcon = ({ name, focused, onPress }) => {
+  const getIcon = () => {
+    switch (name) {
+      case 'Home':
+        return homeSvg;
+      case 'Learning':
+        return bookOpenSvg;
+      case 'Engage':
+        return heartSvg;
+      case 'Mentors':
+        return usersSvg;
+      default:
+        return homeSvg;
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 84, paddingVertical: 6 }}
+      onPress={onPress}
+      activeOpacity={1.0}
+    >
+      {focused && (
+        <LinearGradient
+          colors={['#EC4899', '#7C3AED']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ width: 40, height: 3, borderRadius: 1.5, marginBottom: 4 }}
+        />
+      )}
+      <SvgXml
+        xml={getIcon()}
+        width={20}
+        height={20}
+        color={focused ? '#7C3AED' : '#9CA3AF'}
+      />
+      <Text style={{
+        marginTop: 2,
+        fontSize: 12,
+        color: focused ? '#7C3AED' : '#9CA3AF',
+        fontWeight: focused ? '700' : '600',
+        textAlign: 'center'
+      }}>
+        {name}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
 const BASE_URL = `http://${IP_ADDRESS}:5000`;
 const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
 
-const MyLearningScreen = ({ navigation }) => {
+const MyLearningScreen = ({ navigation, route }) => {
     const [displayName, setDisplayName] = useState('Priya');
     const [activeTab, setActiveTab] = useState('courses');
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [enrolledCourses, setEnrolledCourses] = useState([]);
+    const [registeredConferences, setRegisteredConferences] = useState([]);
     const [registeredEvents, setRegisteredEvents] = useState([]);
     const [registeredWorkshops, setRegisteredWorkshops] = useState([]);
     const [enrolledWellness, setEnrolledWellness] = useState([]);
+    const [conferenceCount, setConferenceCount] = useState(0);
+    const [eventCount, setEventCount] = useState(0);
+    const [mentorsCount, setMentorsCount] = useState(0);
+    const [assessmentsCount, setAssessmentsCount] = useState(0);
+    const [fitnessCount, setFitnessCount] = useState(0);
+    const [playingVideoId, setPlayingVideoId] = useState(null);
 
   useEffect(() => {
     const loadName = async () => {
@@ -34,174 +99,119 @@ const MyLearningScreen = ({ navigation }) => {
       }
     };
     loadName();
+
+    // Connect to socket and listen for real-time updates
+    const socket = connectSocket();
+    const unsubscribeCourseUpdate = onSocket('course_update', (data) => {
+      console.log('Course update received in MyLearning:', data);
+      // Refresh learning data when a course is purchased
+      fetchLearningData();
+    });
+
+    return () => {
+      // Cleanup socket listeners
+      if (unsubscribeCourseUpdate) unsubscribeCourseUpdate();
+      disconnectSocket();
+    };
   }, []);
 
+  // Handle activeTab from route params (e.g., after payment navigation)
   useEffect(() => {
-    const fetchLearningData = async () => {
-      try {
-        setLoading(true);
-        const [coursesRes, eventsRes, workshopsRes] = await Promise.all([
-          courseAPI.getMyCourses().catch(() => ({ data: { courses: [] } })),
-          eventAPI.getMyEvents().catch(() => ({ data: { events: [] } })),
-          workshopAPI.getMyWorkshops().catch(() => ({ data: { workshops: [] } })),
-        ]);
-        let courses = Array.isArray(coursesRes?.data?.courses) ? coursesRes.data.courses : [];
-        let events = Array.isArray(eventsRes?.data?.events) ? eventsRes.data.events : [];
-        let workshops = Array.isArray(workshopsRes?.data?.workshops) ? workshopsRes.data.workshops : [];
+    if (route.params?.activeTab) {
+      setActiveTab(route.params.activeTab);
+    }
+    // Force refresh when navigating to this screen
+    if (route.params?.refresh || route.params?.enrolled) {
+      fetchLearningData();
+    }
+  }, [route.params]);
 
-        // If no real data, show demo data
-        if (courses.length === 0) {
-          courses = [
-            {
-              id: 'demo-course-1',
-              title: 'Advanced Nursing Care Techniques',
-              instructor: 'Dr. Sarah Johnson',
-              image: 'https://via.placeholder.com/300x160/4F46E5/FFFFFF?text=Course+1',
-              progress: 75,
-              totalLessons: 12,
-              completedLessons: 9,
-              duration: '8 hours',
-              nextLesson: 'Patient Monitoring Systems'
-            },
-            {
-              id: 'demo-course-2',
-              title: 'Mental Health Nursing',
-              instructor: 'Prof. Michael Chen',
-              image: 'https://via.placeholder.com/300x160/059669/FFFFFF?text=Course+2',
-              progress: 45,
-              totalLessons: 10,
-              completedLessons: 4,
-              duration: '6 hours',
-              nextLesson: 'Crisis Intervention'
-            }
-          ];
-        }
+  const fetchLearningData = async () => {
+    try {
+      // Use Promise.allSettled for better error handling and performance
+      const [coursesRes, conferencesRes, eventsRes, workshopsRes, wellnessRes, mentorsRes, assessmentsRes] = await Promise.allSettled([
+        courseAPI.getMyCourses().catch(() => ({ data: { courses: [] } })),
+        conferenceAPI.getMyConferences().catch(() => ({ data: { conferences: [] } })),
+        eventAPI.getMyEvents().catch(() => ({ data: { events: [] } })),
+        mentorAPI.getMentors().catch(() => ({ data: [] })),
+        assessmentAPI.getAssessments().catch(() => ({ data: [] })),
+        workshopAPI.getMyWorkshops().catch(() => ({ data: { workshops: [] } })),
+        api.get('/engage/my-registrations').catch(() => ({ data: { registrations: [] } })),
+      ]);
 
-        if (events.length === 0) {
-          events = [
-            {
-              id: 'demo-event-1',
-              title: 'Nursing Leadership Summit 2024',
-              type: 'Conference',
-              image: 'https://via.placeholder.com/300x160/EC4899/FFFFFF?text=Event+1',
-              date: '2024-12-15',
-              time: '9:00 AM',
-              location: 'Virtual',
-              status: 'upcoming'
-            },
-            {
-              id: 'demo-event-2',
-              title: 'Healthcare Innovation Workshop',
-              type: 'Workshop',
-              image: 'https://via.placeholder.com/300x160/7C3AED/FFFFFF?text=Event+2',
-              date: '2024-11-20',
-              time: '2:00 PM',
-              location: 'Mumbai',
-              status: 'completed'
-            }
-          ];
-        }
+      let courses = [];
+      let conferences = [];
+      let events = [];
+      let workshops = [];
+      let wellness = [];
 
-        if (workshops.length === 0) {
-          workshops = [
-            {
-              id: 'demo-workshop-1',
-              title: 'Emergency Response Training',
-              instructor: 'Dr. Robert Davis',
-              image: 'https://via.placeholder.com/300x160/DC2626/FFFFFF?text=Workshop+1',
-              date: '2024-12-20',
-              time: '10:00 AM',
-              location: 'Virtual',
-              duration: '4 hours',
-              status: 'upcoming'
-            },
-            {
-              id: 'demo-workshop-2',
-              title: 'Patient Care Excellence',
-              instructor: 'Ms. Lisa Wong',
-              image: 'https://via.placeholder.com/300x160/EA580C/FFFFFF?text=Workshop+2',
-              date: '2024-11-10',
-              time: '1:00 PM',
-              location: 'Delhi',
-              duration: '3 hours',
-              status: 'completed'
-            }
-          ];
-        }
-
-        setEnrolledCourses(courses);
-        setRegisteredEvents(events);
-        setRegisteredWorkshops(workshops);
-        setEnrolledWellness([]); // TODO: Add wellness API if available
-      } catch (error) {
-        console.error('Error fetching learning data:', error);
-        // Set demo data on error
-        setEnrolledCourses([
-          {
-            id: 'demo-course-1',
-            title: 'Advanced Nursing Care Techniques',
-            instructor: 'Dr. Sarah Johnson',
-            image: 'https://via.placeholder.com/300x160/4F46E5/FFFFFF?text=Course+1',
-            progress: 75,
-            totalLessons: 12,
-            completedLessons: 9,
-            duration: '8 hours',
-            nextLesson: 'Patient Monitoring Systems'
-          }
-        ]);
-        setRegisteredEvents([
-          {
-            id: 'demo-event-1',
-            title: 'Nursing Leadership Summit 2024',
-            type: 'Conference',
-            image: 'https://via.placeholder.com/300x160/EC4899/FFFFFF?text=Event+1',
-            date: '2024-12-15',
-            time: '9:00 AM',
-            location: 'Virtual',
-            status: 'upcoming'
-          }
-        ]);
-        setRegisteredWorkshops([
-          {
-            id: 'demo-workshop-1',
-            title: 'Emergency Response Training',
-            instructor: 'Dr. Robert Davis',
-            image: 'https://via.placeholder.com/300x160/DC2626/FFFFFF?text=Workshop+1',
-            date: '2024-12-20',
-            time: '10:00 AM',
-            location: 'Virtual',
-            duration: '4 hours',
-            status: 'upcoming'
-          }
-        ]);
-      } finally {
-        setLoading(false);
+      // Extract successful results
+      if (coursesRes.status === 'fulfilled') {
+        courses = Array.isArray(coursesRes.value?.data?.courses) ? coursesRes.value.data.courses : [];
       }
-    };
+      if (conferencesRes.status === 'fulfilled') {
+        conferences = Array.isArray(conferencesRes.value?.data?.conferences) ? conferencesRes.value.data.conferences : [];
+      }
+      if (eventsRes.status === 'fulfilled') {
+        events = Array.isArray(eventsRes.value?.data?.events) ? eventsRes.value.data.events : [];
+      }
+      if (workshopsRes.status === 'fulfilled') {
+        workshops = Array.isArray(workshopsRes.value?.data?.workshops) ? workshopsRes.value.data.workshops : [];
+      }
+      if (wellnessRes.status === 'fulfilled') {
+        wellness = Array.isArray(wellnessRes.value?.data?.registrations) ? wellnessRes.value.data.registrations : [];
+      }
+
+      // Cache the results for faster subsequent loads
+      setEnrolledCourses(courses);
+      setRegisteredConferences(conferences);
+      setRegisteredEvents(events);
+      setConferenceCount(conferences.length);
+      setEventCount(events.length);
+      const mentors = mentorsRes?.data?.mentors || mentorsRes?.data || [];
+      setMentorsCount(Array.isArray(mentors) ? mentors.length : 0);
+      const assessments = assessmentsRes?.data || [];
+      setAssessmentsCount(Array.isArray(assessments) ? assessments.length : 0);
+      setRegisteredWorkshops(workshops);
+      setEnrolledWellness(wellness);
+      const fitnessRegistrations = wellness.filter(w => w.activity?.category === 'fitness');
+      setFitnessCount(fitnessRegistrations.length);
+    } catch (error) {
+        console.error('Error fetching learning data:', error);
+        // No demo data on error - show empty state
+      }
+  };
+
+  useEffect(() => {
     fetchLearningData();
   }, []);
 
+  // Refresh data when screen comes into focus (e.g., after payment)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchLearningData();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
 
 
 
+
+  const upcomingConferences = useMemo(() => (registeredConferences || []).filter(e => e.status === 'upcoming'), [registeredConferences]);
+  const completedConferences = useMemo(() => (registeredConferences || []).filter(e => e.status === 'completed'), [registeredConferences]);
   const upcomingEvents = useMemo(() => (registeredEvents || []).filter(e => e.status === 'upcoming'), [registeredEvents]);
   const completedEvents = useMemo(() => (registeredEvents || []).filter(e => e.status === 'completed'), [registeredEvents]);
   const upcomingWorkshops = useMemo(() => (registeredWorkshops || []).filter(w => w.status === 'upcoming'), [registeredWorkshops]);
   const completedWorkshops = useMemo(() => (registeredWorkshops || []).filter(w => w.status === 'completed'), [registeredWorkshops]);
   const inProgressCourses = useMemo(() => (enrolledCourses || []).filter(c => c.progress < 100), [enrolledCourses]);
   const completedCourses = useMemo(() => (enrolledCourses || []).filter(c => c.progress === 100), [enrolledCourses]);
-  const activeWellness = useMemo(() => (enrolledWellness || []).filter(w => w.status === 'active'), [enrolledWellness]);
-  const completedWellness = useMemo(() => (enrolledWellness || []).filter(w => w.status === 'completed'), [enrolledWellness]);
+  const activeWellness = useMemo(() => (enrolledWellness || []).filter(w => w.status === 'registered' && w.activity?.isActive && w.activity?.category === 'wellness'), [enrolledWellness]);
+  const completedWellness = useMemo(() => (enrolledWellness || []).filter(w => w.status === 'completed' && w.activity?.category === 'wellness'), [enrolledWellness]);
+  const activeFitness = useMemo(() => (enrolledWellness || []).filter(w => w.status === 'registered' && w.activity?.isActive && w.activity?.category === 'fitness'), [enrolledWellness]);
+  const completedFitness = useMemo(() => (enrolledWellness || []).filter(w => w.status === 'completed' && w.activity?.category === 'fitness'), [enrolledWellness]);
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#f9fafb', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#7c3aed" />
-        <Text style={{ marginTop: 16, color: '#6b7280' }}>Loading your learning data...</Text>
-      </View>
-    );
-  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
@@ -211,10 +221,20 @@ const MyLearningScreen = ({ navigation }) => {
           colors={['#2563eb', '#7c3aed', '#ec4899']}
           style={styles.header}
         >
-          <Text style={styles.headerTitle}>My Learning</Text>
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.navigate('Main')}
+              activeOpacity={1.0}
+            >
+              <ChevronLeft style={styles.backIcon} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>My Learning</Text>
+            <View style={{ width: 24 }} />
+          </View>
 
           {/* Quick Stats */}
-          <View style={styles.statsContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContainer}>
             <View style={styles.statItem}>
               <BookOpen style={styles.statIcon} />
               <Text style={styles.statLabel}>Courses</Text>
@@ -223,40 +243,67 @@ const MyLearningScreen = ({ navigation }) => {
             <View style={styles.statItem}>
               <Heart style={styles.statIcon} />
               <Text style={styles.statLabel}>Wellness</Text>
-              <Text style={styles.statValue}>{enrolledWellness.length}</Text>
+              <Text style={styles.statValue}>{activeWellness.length + completedWellness.length}</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Heart style={styles.statIcon} />
+              <Text style={styles.statLabel}>Fitness</Text>
+              <Text style={styles.statValue}>{fitnessCount}</Text>
             </View>
             <View style={styles.statItem}>
               <Calendar style={styles.statIcon} />
               <Text style={styles.statLabel}>Events</Text>
-              <Text style={styles.statValue}>{registeredEvents.length}</Text>
+              <Text style={styles.statValue}>{eventCount}</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Calendar style={styles.statIcon} />
+              <Text style={styles.statLabel}>Conferences</Text>
+              <Text style={styles.statValue}>{conferenceCount}</Text>
             </View>
             <View style={styles.statItem}>
               <Users style={styles.statIcon} />
               <Text style={styles.statLabel}>Workshops</Text>
               <Text style={styles.statValue}>{registeredWorkshops.length}</Text>
             </View>
-          </View>
+            <View style={styles.statItem}>
+              <Users style={styles.statIcon} />
+              <Text style={styles.statLabel}>Mentors</Text>
+              <Text style={styles.statValue}>{mentorsCount}</Text>
+            </View>
+            <View style={styles.statItem}>
+              <BookOpen style={styles.statIcon} />
+              <Text style={styles.statLabel}>Assessments</Text>
+              <Text style={styles.statValue}>{assessmentsCount}</Text>
+            </View>
+          </ScrollView>
         </LinearGradient>
 
         {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          {['courses', 'wellness', 'events', 'workshops'].map(tab => (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+          {['courses', 'wellness', 'fitness', 'events', 'conferences', 'workshops'].map(tab => (
             <TouchableOpacity
               key={tab}
               style={[styles.tabButton, activeTab === tab && styles.activeTab]}
               onPress={() => setActiveTab(tab)}
+              activeOpacity={1.0}
             >
               <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         <View style={styles.contentContainer}>
         {/* Courses Tab */}
         {activeTab === 'courses' && (
           <View>
+            {inProgressCourses.length === 0 && completedCourses.length === 0 && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No courses enrolled yet.</Text>
+                <Text style={styles.emptyStateSubText}>Browse and enroll in courses to start learning.</Text>
+              </View>
+            )}
             {inProgressCourses.length > 0 && (
               <View>
                 <Text style={styles.sectionTitle}>In Progress</Text>
@@ -265,14 +312,45 @@ const MyLearningScreen = ({ navigation }) => {
                     key={course.id}
                     style={styles.card}
                     onPress={() => navigation.navigate('CourseViewer', { course })}
+                    activeOpacity={1.0}
                   >
                     <View style={styles.cardImageContainer}>
-                      <Image
-                        source={{ uri: getFullUrl(course.image) }}
-                        style={styles.cardImage}
-                        onError={() => console.log('Image load error for course:', course.id)}
-                      />
-                      <View style={styles.cardOverlay} />
+                      {playingVideoId === course.id && course.lessons && course.lessons[0] && course.lessons[0].videoUrl ? (
+                        <Video
+                          source={{ uri: getFullUrl(course.lessons[0].videoUrl) }}
+                          style={styles.cardImage}
+                          controls
+                          resizeMode="cover"
+                          poster={getFullUrl(course.thumbnail)}
+                          posterResizeMode="cover"
+                          onFullscreenPlayerWillDismiss={() => setPlayingVideoId(null)}
+                        />
+                      ) : (
+                        <>
+                          <Image
+                            source={{ uri: getFullUrl(course.thumbnail) }}
+                            style={styles.cardImage}
+                            onError={() => console.log('Image load error for course:', course.id)}
+                          />
+                          <View style={styles.cardOverlay} />
+                          {course.lessons && course.lessons[0] && course.lessons[0].videoUrl && (
+                            <TouchableOpacity
+                              style={styles.playOverlay}
+                              onPress={() => setPlayingVideoId(course.id)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={styles.playBtn}>
+                                <Text style={styles.playIcon}>▶</Text>
+                              </View>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      )}
+                      {course.price === 0 && (
+                        <View style={styles.freeBadge}>
+                          <Text style={styles.freeBadgeText}>FREE</Text>
+                        </View>
+                      )}
                       <View style={styles.statusPill}>
                         <Text style={styles.statusPillText}>In Progress</Text>
                       </View>
@@ -285,7 +363,7 @@ const MyLearningScreen = ({ navigation }) => {
                     </View>
                     <View style={styles.cardContent}>
                       <View style={styles.cardRow}>
-                        <Text style={styles.cardSubtitle}>by {course.instructor}</Text>
+                        <Text style={styles.cardSubtitle}>by {course.instructor?.name || course.instructor}</Text>
                         <Text style={styles.progressText}>{course.progress}% Complete</Text>
                       </View>
                       <View style={styles.cardRow}>
@@ -298,13 +376,28 @@ const MyLearningScreen = ({ navigation }) => {
                           <Text>{course.duration}</Text>
                         </View>
                       </View>
+                      <View style={styles.priceRow}>
+                        <View>
+                          {course.price === 0 ? (
+                            <Text style={styles.freeText}>Free</Text>
+                          ) : (
+                            <View style={styles.priceContainer}>
+                              <Text style={styles.rupeeIcon}>₹</Text>
+                              <Text style={styles.priceText}>{course.price}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.pointsContainer}>
+                          <Text style={styles.pointsText}>+{course.points || 0} pts</Text>
+                        </View>
+                      </View>
                       {course.nextLesson && (
                         <View style={styles.nextLesson}>
                           <Text style={styles.nextLessonLabel}>Next Lesson</Text>
                           <Text style={styles.nextLessonTitle}>{course.nextLesson}</Text>
                         </View>
                       )}
-                      <TouchableOpacity style={styles.continueButton}>
+                      <TouchableOpacity style={styles.continueButton} activeOpacity={1.0}>
                         <Play style={styles.buttonIcon} />
                         <Text style={styles.buttonText}>Continue Learning</Text>
                       </TouchableOpacity>
@@ -325,17 +418,38 @@ const MyLearningScreen = ({ navigation }) => {
                 </View>
                 {completedCourses.map((course) => (
                   <View key={course.id} style={styles.completedCard}>
-                    <Image
-                      source={{ uri: getFullUrl(course.image) }}
-                      style={styles.completedImage}
-                      onError={() => console.log('Image load error for completed course:', course.id)}
-                    />
+                    {playingVideoId === `completed-${course.id}` && course.lessons && course.lessons[0] && course.lessons[0].videoUrl ? (
+                      <Video
+                        source={{ uri: getFullUrl(course.lessons[0].videoUrl) }}
+                        style={styles.completedImage}
+                        controls
+                        resizeMode="cover"
+                        poster={getFullUrl(course.thumbnail)}
+                        posterResizeMode="cover"
+                        onFullscreenPlayerWillDismiss={() => setPlayingVideoId(null)}
+                      />
+                    ) : (
+                      <TouchableOpacity onPress={() => course.lessons && course.lessons[0] && course.lessons[0].videoUrl && setPlayingVideoId(`completed-${course.id}`)}>
+                        <Image
+                          source={{ uri: getFullUrl(course.thumbnail) }}
+                          style={styles.completedImage}
+                          onError={() => console.log('Image load error for completed course:', course.id)}
+                        />
+                        {course.lessons && course.lessons[0] && course.lessons[0].videoUrl && (
+                          <View style={styles.completedPlayOverlay}>
+                            <View style={styles.completedPlayBtn}>
+                              <Text style={styles.completedPlayIcon}>▶</Text>
+                            </View>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    )}
                     <View style={styles.completedContent}>
                     <View style={styles.completedHeader}>
-                     
+
                       <View>
                         <Text style={styles.completedTitle} numberOfLines={2}>{course.title}</Text>
-                        <Text style={styles.completedSubtitle}>by {course.instructor}</Text>
+                        <Text style={styles.completedSubtitle}>by {course.instructor?.name || course.instructor}</Text>
                       </View>
                     </View>
                       <View style={styles.completedRow}>
@@ -343,8 +457,23 @@ const MyLearningScreen = ({ navigation }) => {
                         <Text>•</Text>
                         <Text>{course.duration}</Text>
                       </View>
+                      <View style={styles.priceRow}>
+                        <View>
+                          {course.price === 0 ? (
+                            <Text style={styles.freeText}>Free</Text>
+                          ) : (
+                            <View style={styles.priceContainer}>
+                              <Text style={styles.rupeeIcon}>₹</Text>
+                              <Text style={styles.priceText}>{course.price}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.pointsContainer}>
+                          <Text style={styles.pointsText}>+{course.points || 0} pts</Text>
+                        </View>
+                      </View>
                       {course.certificate && (
-                        <TouchableOpacity style={styles.downloadButton}>
+                        <TouchableOpacity style={styles.downloadButton} activeOpacity={1.0}>
                           <Download style={styles.downloadIcon} />
                           <Text style={styles.downloadText}>Download Certificate</Text>
                         </TouchableOpacity>
@@ -360,36 +489,63 @@ const MyLearningScreen = ({ navigation }) => {
         {/* Wellness Tab */}
         {activeTab === 'wellness' && (
           <View>
+            {activeWellness.length === 0 && completedWellness.length === 0 && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No wellness programs enrolled yet.</Text>
+                <Text style={styles.emptyStateSubText}>Explore wellness activities to maintain your well-being.</Text>
+              </View>
+            )}
             {activeWellness.length > 0 && (
               <View>
                 <Text style={styles.sectionTitle}>Active Programs</Text>
-                {activeWellness.map((program) => (
-                  <TouchableOpacity
-                    key={program.id}
-                    style={styles.card}
-                    onPress={() => navigation.navigate('WellnessViewer', { program })}
-                  >
-                    <Image source={{ uri: program.image }} style={styles.wellnessImage} />
-                    <View style={styles.cardContent}>
-                      <View style={styles.cardRow}>
-                        <View>
-                          <Text style={styles.cardTitle}>{program.title}</Text>
-                          <Text style={styles.cardSubtitle}>{program.type}</Text>
+                {activeWellness.map((registration) => {
+                  const program = registration.activity;
+                  return (
+                    <TouchableOpacity
+                      key={registration.id}
+                      style={styles.card}
+                      onPress={() => navigation.navigate('EngageDetails', { item: program })}
+                      activeOpacity={1.0}
+                    >
+                      <Image source={{ uri: getFullUrl(program.thumbnail) }} style={styles.wellnessImage} />
+                      <View style={styles.cardContent}>
+                        <View style={styles.cardRow}>
+                          <View>
+                            <Text style={styles.cardTitle}>{program.title}</Text>
+                            <Text style={styles.cardSubtitle}>{program.type}</Text>
+                          </View>
+                          <Text style={styles.statusText}>Enrolled</Text>
                         </View>
-                        <Text style={styles.statusText}>In Progress</Text>
+                        <View style={styles.cardRow}>
+                          <Text>Registered on {new Date(registration.registeredAt).toLocaleDateString()}</Text>
+                        </View>
+                        <View style={styles.priceRow}>
+                          <View>
+                            {program.price === 0 ? (
+                              <Text style={styles.freeText}>Free</Text>
+                            ) : (
+                              <View style={styles.priceContainer}>
+                                <Text style={styles.rupeeIcon}>₹</Text>
+                                <Text style={styles.priceText}>{program.price}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.pointsContainer}>
+                            <Text style={styles.pointsText}>+{program.points || 0} pts</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.continueButton}
+                          activeOpacity={1.0}
+                          onPress={() => navigation.navigate('EngageDetails', { item: program })}
+                        >
+                          <Play style={styles.buttonIcon} />
+                          <Text style={styles.buttonText}>Start Activity</Text>
+                        </TouchableOpacity>
                       </View>
-                      <View style={styles.cardRow}>
-                        <Text>{program.completedSessions}/{program.totalSessions} sessions</Text>
-                        <Text>•</Text>
-                        <Text>{program.nextSession}</Text>
-                      </View>
-                      <TouchableOpacity style={styles.continueButton}>
-                        <Play style={styles.buttonIcon} />
-                        <Text style={styles.buttonText}>Continue</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
 
@@ -400,31 +556,161 @@ const MyLearningScreen = ({ navigation }) => {
                           <CheckCircle style={styles.badgeIcon} />
                           <Text style={styles.badgeText}>Done</Text>
                         </View>
-                {completedWellness.map((program) => (
-                  <View key={program.id} style={styles.completedCard}>
-                    <Image source={{ uri: program.image }} style={[styles.completedImage, styles.grayscale]} />
-                    <View style={styles.completedContent}>
-                      <View style={styles.completedHeader}>
-                        <View>
-                          <Text style={styles.completedTitle} numberOfLines={1}>{program.title}</Text>
-                          <Text style={styles.completedSubtitle}>{program.type}</Text>
+                {completedWellness.map((registration) => {
+                  const program = registration.activity;
+                  return (
+                    <View key={registration.id} style={styles.completedCard}>
+                      <Image source={{ uri: getFullUrl(program.thumbnail) }} style={[styles.completedImage, styles.grayscale]} />
+                      <View style={styles.completedContent}>
+                        <View style={styles.completedHeader}>
+                          <View>
+                            <Text style={styles.completedTitle} numberOfLines={1}>{program.title}</Text>
+                            <Text style={styles.completedSubtitle}>{program.type}</Text>
+                          </View>
                         </View>
-                       
+                        <View style={styles.completedRow}>
+                          <Text>Completed on {new Date(registration.completedAt || registration.registeredAt).toLocaleDateString()}</Text>
+                        </View>
+                        <View style={styles.priceRow}>
+                          <View>
+                            {program.price === 0 ? (
+                              <Text style={styles.freeText}>Free</Text>
+                            ) : (
+                              <View style={styles.priceContainer}>
+                                <Text style={styles.rupeeIcon}>₹</Text>
+                                <Text style={styles.priceText}>{program.price}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.pointsContainer}>
+                            <Text style={styles.pointsText}>+{program.points || 0} pts</Text>
+                          </View>
+                        </View>
+                        {program.certificate && (
+                          <TouchableOpacity style={styles.downloadButton} activeOpacity={1.0}>
+                            <Download style={styles.downloadIcon} />
+                            <Text style={styles.downloadText}>Download Certificate</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
-                      <View style={styles.completedRow}>
-                        <Text>{program.totalSessions} sessions</Text>
-                        <Text>•</Text>
-                        <Text>{program.nextSession}</Text>
-                      </View>
-                      {program.certificate && (
-                        <TouchableOpacity style={styles.downloadButton}>
-                          <Download style={styles.downloadIcon} />
-                          <Text style={styles.downloadText}>Download Certificate</Text>
-                        </TouchableOpacity>
-                      )}
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Fitness Tab */}
+        {activeTab === 'fitness' && (
+          <View>
+            {activeFitness.length === 0 && completedFitness.length === 0 && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No fitness programs enrolled yet.</Text>
+                <Text style={styles.emptyStateSubText}>Explore fitness activities to stay active.</Text>
+              </View>
+            )}
+            {activeFitness.length > 0 && (
+              <View>
+                <Text style={styles.sectionTitle}>Active Programs</Text>
+                {activeFitness.map((registration) => {
+                  const program = registration.activity;
+                  return (
+                    <TouchableOpacity
+                      key={registration.id}
+                      style={styles.card}
+                      onPress={() => navigation.navigate('EngageDetails', { item: program })}
+                      activeOpacity={1.0}
+                    >
+                      <Image source={{ uri: getFullUrl(program.thumbnail) }} style={styles.wellnessImage} />
+                      <View style={styles.cardContent}>
+                        <View style={styles.cardRow}>
+                          <View>
+                            <Text style={styles.cardTitle}>{program.title}</Text>
+                            <Text style={styles.cardSubtitle}>{program.type}</Text>
+                          </View>
+                          <Text style={styles.statusText}>Enrolled</Text>
+                        </View>
+                        <View style={styles.cardRow}>
+                          <Text>Registered on {new Date(registration.registeredAt).toLocaleDateString()}</Text>
+                        </View>
+                        <View style={styles.priceRow}>
+                          <View>
+                            {program.price === 0 ? (
+                              <Text style={styles.freeText}>Free</Text>
+                            ) : (
+                              <View style={styles.priceContainer}>
+                                <Text style={styles.rupeeIcon}>₹</Text>
+                                <Text style={styles.priceText}>{program.price}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.pointsContainer}>
+                            <Text style={styles.pointsText}>+{program.points || 0} pts</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.continueButton}
+                          activeOpacity={1.0}
+                          onPress={() => navigation.navigate('EngageDetails', { item: program })}
+                        >
+                          <Play style={styles.buttonIcon} />
+                          <Text style={styles.buttonText}>Start Activity</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
+            {completedFitness.length > 0 && (
+              <View>
+                <Text style={styles.sectionTitle}>Completed Programs</Text>
+                <View style={styles.completedBadge}>
+                  <CheckCircle style={styles.badgeIcon} />
+                  <Text style={styles.badgeText}>Done</Text>
+                </View>
+                {completedFitness.map((registration) => {
+                  const program = registration.activity;
+                  return (
+                    <View key={registration.id} style={styles.completedCard}>
+                      <Image source={{ uri: getFullUrl(program.thumbnail) }} style={[styles.completedImage, styles.grayscale]} />
+                      <View style={styles.completedContent}>
+                        <View style={styles.completedHeader}>
+                          <View>
+                            <Text style={styles.completedTitle} numberOfLines={1}>{program.title}</Text>
+                            <Text style={styles.completedSubtitle}>{program.type}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.completedRow}>
+                          <Text>Completed on {new Date(registration.completedAt || registration.registeredAt).toLocaleDateString()}</Text>
+                        </View>
+                        <View style={styles.priceRow}>
+                          <View>
+                            {program.price === 0 ? (
+                              <Text style={styles.freeText}>Free</Text>
+                            ) : (
+                              <View style={styles.priceContainer}>
+                                <Text style={styles.rupeeIcon}>₹</Text>
+                                <Text style={styles.priceText}>{program.price}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.pointsContainer}>
+                            <Text style={styles.pointsText}>+{program.points || 0} pts</Text>
+                          </View>
+                        </View>
+                        {program.certificate && (
+                          <TouchableOpacity style={styles.downloadButton} activeOpacity={1.0}>
+                            <Download style={styles.downloadIcon} />
+                            <Text style={styles.downloadText}>Download Certificate</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>
@@ -433,14 +719,21 @@ const MyLearningScreen = ({ navigation }) => {
         {/* Events Tab */}
         {activeTab === 'events' && (
           <View>
+            {upcomingEvents.length === 0 && completedEvents.length === 0 && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No events registered yet.</Text>
+                <Text style={styles.emptyStateSubText}>Register for events to expand your knowledge.</Text>
+              </View>
+            )}
             {upcomingEvents.length > 0 && (
               <View>
-                <Text style={styles.sectionTitle}>Upcoming</Text>
+                <Text style={styles.sectionTitle}>Upcoming Events</Text>
                 {upcomingEvents.map((event) => (
                   <TouchableOpacity
                     key={event.id}
                     style={styles.eventCard}
                     onPress={() => navigation.navigate('EventViewer', { event })}
+                    activeOpacity={1.0}
                   >
                     <Image
                       source={{ uri: getFullUrl(event.image) }}
@@ -448,34 +741,49 @@ const MyLearningScreen = ({ navigation }) => {
                       onError={() => console.log('Image load error for event:', event.id)}
                     />
                     <View style={styles.eventContent}>
-                      <View style={styles.eventHeader}>
-                        <View>
-                          <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-                          <Text style={styles.eventType}>{event.type}</Text>
-                        </View>
-                        {event.daysUntil && event.daysUntil <= 3 && (
-                          <Text style={styles.daysLeft}>{event.daysUntil}d left</Text>
+                    <View style={styles.eventHeader}>
+                      <View>
+                        <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+                        <Text style={styles.eventType}>{event.type}</Text>
+                      </View>
+                      {event.daysUntil && event.daysUntil <= 3 && (
+                        <Text style={styles.daysLeft}>{event.daysUntil}d left</Text>
+                      )}
+                    </View>
+                    <View style={styles.eventDetails}>
+                      <View style={styles.iconText}>
+                        <Calendar style={styles.icon} />
+                        <Text>{new Date(event.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+                      </View>
+                      <View style={styles.iconText}>
+                        <Clock style={styles.icon} />
+                        <Text>{event.time}</Text>
+                      </View>
+                      <View style={styles.iconText}>
+                        <Users style={styles.icon} />
+                        <Text>{event.location}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.priceRow}>
+                      <View>
+                        {event.price === 0 ? (
+                          <Text style={styles.freeText}>Free</Text>
+                        ) : (
+                          <View style={styles.priceContainer}>
+                            <Text style={styles.rupeeIcon}>₹</Text>
+                            <Text style={styles.priceText}>{event.price}</Text>
+                          </View>
                         )}
                       </View>
-                      <View style={styles.eventDetails}>
-                        <View style={styles.iconText}>
-                          <Calendar style={styles.icon} />
-                          <Text>{new Date(event.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
-                        </View>
-                        <View style={styles.iconText}>
-                          <Clock style={styles.icon} />
-                          <Text>{event.time}</Text>
-                        </View>
-                        <View style={styles.iconText}>
-                          <Users style={styles.icon} />
-                          <Text>{event.location}</Text>
-                        </View>
+                      <View style={styles.pointsContainer}>
+                        <Text style={styles.pointsText}>+{event.points || 0} pts</Text>
                       </View>
-                      <TouchableOpacity style={styles.viewDetailsButton}>
-                        <Text style={styles.viewDetailsText}>View Details</Text>
-                        <ChevronRight style={styles.chevronIcon} />
-                      </TouchableOpacity>
                     </View>
+                    <TouchableOpacity style={styles.viewDetailsButton} activeOpacity={1.0}>
+                      <Text style={styles.viewDetailsText}>View Details</Text>
+                      <ChevronRight style={styles.chevronIcon} />
+                    </TouchableOpacity>
+                  </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -508,9 +816,100 @@ const MyLearningScreen = ({ navigation }) => {
           </View>
         )}
 
+        {/* Conferences Tab */}
+        {activeTab === 'conferences' && (
+          <View>
+            {upcomingConferences.length === 0 && completedConferences.length === 0 && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No conferences registered yet.</Text>
+                <Text style={styles.emptyStateSubText}>Register for conferences to expand your knowledge.</Text>
+              </View>
+            )}
+            {upcomingConferences.length > 0 && (
+              <View>
+                <Text style={styles.sectionTitle}>Upcoming Conferences</Text>
+                {upcomingConferences.map((conference) => (
+                  <TouchableOpacity
+                    key={conference.id}
+                    style={styles.eventCard}
+                    onPress={() => navigation.navigate('ConferenceViewer', { conference })}
+                    activeOpacity={1.0}
+                  >
+                    <Image
+                      source={{ uri: getFullUrl(conference.image) }}
+                      style={styles.eventImage}
+                      onError={() => console.log('Image load error for conference:', conference.id)}
+                    />
+                    <View style={styles.eventContent}>
+                      <View style={styles.eventHeader}>
+                        <View>
+                          <Text style={styles.eventTitle} numberOfLines={1}>{conference.title}</Text>
+                          <Text style={styles.eventType}>{conference.type}</Text>
+                        </View>
+                        {conference.daysUntil && conference.daysUntil <= 3 && (
+                          <Text style={styles.daysLeft}>{conference.daysUntil}d left</Text>
+                        )}
+                      </View>
+                      <View style={styles.eventDetails}>
+                        <View style={styles.iconText}>
+                          <Calendar style={styles.icon} />
+                          <Text>{new Date(conference.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+                        </View>
+                        <View style={styles.iconText}>
+                          <Clock style={styles.icon} />
+                          <Text>{conference.time}</Text>
+                        </View>
+                        <View style={styles.iconText}>
+                          <Users style={styles.icon} />
+                          <Text>{conference.location}</Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity style={styles.viewDetailsButton} activeOpacity={1.0}>
+                        <Text style={styles.viewDetailsText}>View Details</Text>
+                        <ChevronRight style={styles.chevronIcon} />
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {completedConferences.length > 0 && (
+              <View>
+                <Text style={styles.sectionTitle}>Past Conferences</Text>
+                {completedConferences.map((conference) => (
+                  <View key={conference.id} style={[styles.eventCard, styles.pastEvent]}>
+                    <Image
+                      source={{ uri: getFullUrl(conference.image) }}
+                      style={[styles.eventImage, styles.grayscale]}
+                      onError={() => console.log('Image load error for completed conference:', conference.id)}
+                    />
+                    <View style={styles.eventContent}>
+                      <Text style={styles.eventTitle} numberOfLines={1}>{conference.title}</Text>
+                      <Text style={styles.pastDate}>
+                        {new Date(conference.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </Text>
+                      <View style={styles.completedBadge}>
+                        <CheckCircle style={styles.badgeIcon} />
+                        <Text style={styles.badgeText}>Attended</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Workshops Tab */}
         {activeTab === 'workshops' && (
           <View>
+            {upcomingWorkshops.length === 0 && completedWorkshops.length === 0 && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No workshops registered yet.</Text>
+                <Text style={styles.emptyStateSubText}>Join workshops to enhance your skills.</Text>
+              </View>
+            )}
             {upcomingWorkshops.length > 0 && (
               <View>
                 <Text style={styles.sectionTitle}>Upcoming</Text>
@@ -519,6 +918,7 @@ const MyLearningScreen = ({ navigation }) => {
                     key={workshop.id}
                     style={styles.workshopCard}
                     onPress={() => navigation.navigate('WorkshopViewer', { workshop })}
+                    activeOpacity={1.0}
                   >
                     <Image
                       source={{ uri: getFullUrl(workshop.image) }}
@@ -526,38 +926,53 @@ const MyLearningScreen = ({ navigation }) => {
                       onError={() => console.log('Image load error for workshop:', workshop.id)}
                     />
                     <View style={styles.workshopContent}>
-                      <View style={styles.workshopHeader}>
-                        <View>
-                          <Text style={styles.workshopTitle} numberOfLines={1}>{workshop.title}</Text>
-                          <Text style={styles.workshopSubtitle}>by {workshop.instructor}</Text>
-                        </View>
-                        {workshop.daysUntil && workshop.daysUntil <= 5 && (
-                          <Text style={styles.daysLeft}>{workshop.daysUntil}d left</Text>
+                    <View style={styles.workshopHeader}>
+                      <View>
+                        <Text style={styles.workshopTitle} numberOfLines={1}>{workshop.title}</Text>
+                        <Text style={styles.workshopSubtitle}>by {workshop.instructor?.name || workshop.instructor}</Text>
+                      </View>
+                      {workshop.daysUntil && workshop.daysUntil <= 5 && (
+                        <Text style={styles.daysLeft}>{workshop.daysUntil}d left</Text>
+                      )}
+                    </View>
+                    <View style={styles.workshopDetails}>
+                      <View style={styles.iconText}>
+                        <Calendar style={styles.icon} />
+                        <Text>{new Date(workshop.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+                      </View>
+                      <View style={styles.iconText}>
+                        <Clock style={styles.icon} />
+                        <Text>{workshop.time} • {workshop.duration}</Text>
+                      </View>
+                      <View style={styles.iconText}>
+                        {workshop.location.includes('Virtual') ? (
+                          <Video style={styles.icon} />
+                        ) : (
+                          <Users style={styles.icon} />
+                        )}
+                        <Text>{workshop.location}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.priceRow}>
+                      <View>
+                        {workshop.price === 0 ? (
+                          <Text style={styles.freeText}>Free</Text>
+                        ) : (
+                          <View style={styles.priceContainer}>
+                            <Text style={styles.rupeeIcon}>₹</Text>
+                            <Text style={styles.priceText}>{workshop.price}</Text>
+                          </View>
                         )}
                       </View>
-                      <View style={styles.workshopDetails}>
-                        <View style={styles.iconText}>
-                          <Calendar style={styles.icon} />
-                          <Text>{new Date(workshop.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
-                        </View>
-                        <View style={styles.iconText}>
-                          <Clock style={styles.icon} />
-                          <Text>{workshop.time} • {workshop.duration}</Text>
-                        </View>
-                        <View style={styles.iconText}>
-                          {workshop.location.includes('Virtual') ? (
-                            <Video style={styles.icon} />
-                          ) : (
-                            <Users style={styles.icon} />
-                          )}
-                          <Text>{workshop.location}</Text>
-                        </View>
+                      <View style={styles.pointsContainer}>
+                        <Text style={styles.pointsText}>+{workshop.points || 0} pts</Text>
                       </View>
-                      <TouchableOpacity style={styles.viewDetailsButton}>
-                        <Text style={styles.viewDetailsText}>View Details</Text>
-                        <ChevronRight style={styles.chevronIcon} />
-                      </TouchableOpacity>
                     </View>
+                    <TouchableOpacity style={styles.viewDetailsButton} activeOpacity={1.0}>
+                      <Text style={styles.viewDetailsText}>View Details</Text>
+                      <ChevronRight style={styles.chevronIcon} />
+                    </TouchableOpacity>
+                  </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -596,6 +1011,14 @@ const MyLearningScreen = ({ navigation }) => {
         )}
         </View>
       </ScrollView>
+
+      {/* Bottom Tab Bar */}
+      <View style={styles.bottomTabBar}>
+        <TabIcon name="Home" focused={false} onPress={() => navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main' }] }))} />
+        <TabIcon name="Learning" focused={true} onPress={() => navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main', params: { initialTab: 'Learning' } }] }))} />
+        <TabIcon name="Engage" focused={false} onPress={() => navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main', params: { initialTab: 'Engage' } }] }))} />
+        <TabIcon name="Mentors" focused={false} onPress={() => navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main', params: { initialTab: 'Mentors' } }] }))} />
+      </View>
     </View>
   );
 };
@@ -608,23 +1031,44 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  backButton: {
+    padding: 8,
+  },
+  backIcon: {
+    width: 24,
+    height: 24,
+    color: 'white',
+  },
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
     color: 'white',
     textAlign: 'center',
-    marginBottom: 24,
+  },
+  bottomTabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    height: 64,
+    paddingBottom: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
   },
   statItem: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 16,
     padding: 8,
-    flex: 1,
+    width: 120,
     marginHorizontal: 2,
   },
   statIcon: {
@@ -888,6 +1332,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  completedPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  completedPlayBtn: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completedPlayIcon: {
+    fontSize: 16,
+    color: '#fff',
+    marginLeft: 2,
+  },
   downloadButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1029,6 +1496,69 @@ const styles = StyleSheet.create({
   },
   pastWorkshop: {
     opacity: 0.75,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  emptyStateSubText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  freeBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: '#10B981',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  freeBadgeText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  freeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rupeeIcon: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  priceText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  pointsContainer: {
+    alignItems: 'flex-end',
+  },
+  pointsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F59E0B',
   },
 });
 

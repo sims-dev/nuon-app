@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import api, { probeAndFixBase } from '../services/api';
 import { NEON_COLORS } from '../utils/colors';
+import { AuthContext } from '../contexts/AuthContext';
 
 const OtpVerificationScreen = () => {
   const navigation = useNavigation();
+  const { updateUser, setToken, setRefreshToken } = useContext(AuthContext);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,8 +62,28 @@ const OtpVerificationScreen = () => {
       const digits = (phoneNumber || '').replace(/\D/g, '').slice(0, 10);
       const response = await api.post('/otp/verifyOTP', { type: 'phone', identifier: `+91${digits}`, otp }, { timeout: 8000 });
       if (response.data.success) {
+        const { isNewUser, user, token, refreshToken } = response.data;
+
+        // Map backend isProfileComplete to frontend profileIncomplete
+        const userWithProfileStatus = {
+          ...user,
+          profileIncomplete: !user.isProfileComplete
+        };
+
+        // Store auth data
+        await AsyncStorage.setItem('token', token);
+        await AsyncStorage.setItem('refreshToken', refreshToken);
+        await AsyncStorage.setItem('user', JSON.stringify(userWithProfileStatus));
+
+        // Update AuthContext state
+        setToken(token);
+        setRefreshToken(refreshToken);
+        updateUser(userWithProfileStatus);
+
         Alert.alert('Success', 'OTP verified successfully');
-        navigation.navigate('ProfileSetupScreen', { isNewUser: response.data.isNewUser });
+
+        // Navigation will be handled automatically by AuthContext and AppNavigator
+        // based on the updated user state
       }
     } catch (error) {
       console.error('OTP verify error:', error);
@@ -125,14 +148,14 @@ const styles = StyleSheet.create({
     backgroundColor: NEON_COLORS.background,
     padding: 20,
   },
-  title: {
+  title: {  
     fontSize: 24,
     fontWeight: 'bold',
     color: NEON_COLORS.textPrimary,
     marginBottom: 20,
   },
   inputGroup: {
-    width: '100%',
+    width: '50%',
     marginBottom: 20,
   },
   label: {

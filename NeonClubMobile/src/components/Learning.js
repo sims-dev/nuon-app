@@ -9,6 +9,7 @@ import {
   Platform,
   Image,
   ScrollView,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
@@ -30,35 +31,6 @@ const mapPinSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24
 const awardSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>`;
 const indianRupeeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3"/><path d="M9 13c6.667 0 6.667-10 0-10"/></svg>`;
 
-const formatEventDate = (startDate, endDate) => {
-  if (!startDate || !endDate) return '';
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const startMonth = start.toLocaleString('en-US', { month: 'short' });
-  const endMonth = end.toLocaleString('en-US', { month: 'short' });
-  const startDay = start.getDate();
-  const endDay = end.getDate();
-  const year = start.getFullYear();
-  if (startMonth === endMonth) {
-    return `${startMonth} ${startDay}-${endDay}, ${year}`;
-  } else {
-    return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
-  }
-};
-
-const formatSingleDate = (dateString) => {
-  if (!dateString) return '';
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    }).toLowerCase(); // "nov 28, 2024"
-  } catch {
-    return dateString;
-  }
-};
 
 const Learning = ({ navigation }) => {
   const [displayName, setDisplayName] = useState('Priya');
@@ -73,6 +45,9 @@ const Learning = ({ navigation }) => {
             const firstName = parsed.fullName.split(' ')[0];
             setDisplayName(firstName);
           }
+          if (parsed.id) {
+            setUserId(parsed.id);
+          }
         }
       } catch (error) {
         console.error('Error loading saved profile data:', error);
@@ -86,8 +61,12 @@ const Learning = ({ navigation }) => {
   const [courses, setCourses] = useState([]);
   const [events, setEvents] = useState([]);
   const [workshops, setWorkshops] = useState([]);
+  const [enrolledCourses, setEnrolledCourses] = useState([]);
+  const [enrolledEvents, setEnrolledEvents] = useState([]);
+  const [enrolledWorkshops, setEnrolledWorkshops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [userId, setUserId] = useState(null);
 
   // Fetch data from backend
   useEffect(() => {
@@ -96,15 +75,21 @@ const Learning = ({ navigation }) => {
         setLoading(true);
         setError(null);
 
-        const [coursesRes, eventsRes, workshopsRes] = await Promise.all([
-          courseAPI.getCourses().catch(() => ({ data: { courses: [] } })),
+        const [coursesRes, eventsRes, workshopsRes, myCoursesRes, myEventsRes, myWorkshopsRes] = await Promise.all([
+          userId ? courseAPI.getCoursesWithEnrollment(userId).catch(() => ({ data: { courses: [] } })) : courseAPI.getCourses().catch(() => ({ data: { courses: [] } })),
           eventAPI.getEvents().catch(() => ({ data: { events: [] } })),
-          workshopAPI.getWorkshops().catch(() => ({ data: { workshops: [] } }))
+          workshopAPI.getWorkshops().catch(() => ({ data: { workshops: [] } })),
+          courseAPI.getMyCourses().catch(() => ({ data: { courses: [] } })),
+          eventAPI.getMyEvents().catch(() => ({ data: { events: [] } })),
+          workshopAPI.getMyWorkshops().catch(() => ({ data: { workshops: [] } }))
         ]);
 
         setCourses(coursesRes.data?.courses || coursesRes.data || []);
         setEvents(eventsRes.data?.events || eventsRes.data || []);
         setWorkshops(workshopsRes.data?.workshops || workshopsRes.data || []);
+        setEnrolledCourses(myCoursesRes.data?.courses || myCoursesRes.data || []);
+        setEnrolledEvents(myEventsRes.data?.events || myEventsRes.data || []);
+        setEnrolledWorkshops(myWorkshopsRes.data?.workshops || myWorkshopsRes.data || []);
       } catch (err) {
         console.error('Error fetching learning data:', err);
         setError('Failed to load content');
@@ -114,7 +99,7 @@ const Learning = ({ navigation }) => {
     };
 
     fetchData();
-  }, []);
+  }, [userId]);
 
   // Socket connection for real-time updates
   useEffect(() => {
@@ -228,8 +213,28 @@ const Learning = ({ navigation }) => {
     );
   };
 
+  const pay = async (courseId) => {
+    if (!userId) {
+      Alert.alert('Error', 'User not logged in');
+      return;
+    }
+
+    try {
+      await courseAPI.processDemoPayment(userId, courseId);
+      // Refresh courses data
+      const coursesRes = await courseAPI.getCoursesWithEnrollment(userId);
+      setCourses(coursesRes.data?.courses || coursesRes.data || []);
+      // Navigate to My Learning
+      navigation.navigate('MyLearning');
+    } catch (error) {
+      console.error('Payment error:', error);
+      Alert.alert('Error', 'Payment failed. Please try again.');
+    }
+  };
+
   const renderItem = ({ item, index }) => {
     const handlePress = () => {
+      // Navigate to details
       navigation.navigate('LearningDetails', {
         type: activeTab === 'courses' ? 'course' : activeTab === 'events' ? 'event' : 'workshop',
         data: item
@@ -268,7 +273,7 @@ const Learning = ({ navigation }) => {
       <TouchableOpacity
         key={item.id || index}
         style={styles.card}
-        onPress={handlePress}
+        onPress={() => handlePress(item)}
         activeOpacity={0.9}
       >
         <View style={styles.cardImageContainer}>
@@ -364,17 +369,12 @@ const Learning = ({ navigation }) => {
            )}
            {activeTab === 'events' && (
              <>
-               {item.startDate && item.endDate ? (
-                 <View style={styles.metaItem}>
-                   <SvgXml xml={calendarSvg} width={14} height={14} color="#6B7280" />
-                   <Text style={styles.metaText}>Date: {formatEventDate(item.startDate, item.endDate)}</Text>
-                 </View>
-               ) : item.date ? (
+               {item.date && (
                  <View style={styles.metaItem}>
                    <SvgXml xml={calendarSvg} width={14} height={14} color="#6B7280" />
                    <Text style={styles.metaText}>Date: {item.date}</Text>
                  </View>
-               ) : null}
+               )}
                {item.time && (
                  <View style={styles.metaItem}>
                    <SvgXml xml={clockSvg} width={14} height={14} color="#6B7280" />
@@ -393,7 +393,7 @@ const Learning = ({ navigation }) => {
              <>
                <View style={styles.metaItem}>
                  <SvgXml xml={calendarSvg} width={14} height={14} color="#6B7280" />
-                 <Text style={styles.metaText}>Date: {item.date ? formatSingleDate(item.date) : 'N/A'}</Text>
+                 <Text style={styles.metaText}>Date: {item.date || 'N/A'}</Text>
                </View>
                <View style={styles.metaItem}>
                  <SvgXml xml={clockSvg} width={14} height={14} color="#6B7280" />
@@ -424,14 +424,31 @@ const Learning = ({ navigation }) => {
                <Text style={styles.freePrice}>Price N/A</Text>
              )}
            </View>
-           <View style={styles.pointsContainer}>
-             {item.points && item.points > 0 ? (
-               <Text style={styles.pointsText}>+{item.points} pts</Text>
-             ) : (
-               <Text style={styles.pointsText}>No points</Text>
-             )}
-           </View>
+           <Text style={styles.pointsText}>+{item.points || 0} pts</Text>
           </View>
+
+          {/* Buy Button for Courses */}
+          {activeTab === 'courses' && (
+            <View style={styles.cardActions}>
+              {item.isEnrolled ? (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.enrolledButton]}
+                  onPress={() => navigation.navigate('MyLearning')}
+                >
+                  <Text style={styles.enrolledButtonText}>Go to Learning</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.buyButton]}
+                  onPress={() => pay(item.id)}
+                >
+                  <Text style={styles.buyButtonText}>
+                    Buy ₹{item.price || 0}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -799,9 +816,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
     marginLeft: 2,
-  },
-  pointsContainer: {
-    alignItems: 'flex-end',
   },
   pointsText: {
     fontSize: 15,

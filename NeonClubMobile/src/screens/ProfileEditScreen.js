@@ -8,16 +8,20 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Image,
   Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
 import { AuthContext } from '../contexts/AuthContext';
-import api, { authAPI } from '../services/api';
-import {launchImageLibrary} from 'react-native-image-picker';
-import { IP_ADDRESS } from '../config/ipConfig';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../screens/ui/select';
+import api from '../services/api';
+import { refreshProfileData } from '../utils/profileUtils';
+import Badge from '../components/Badge';
 
+console.log('ProfileEditScreen: Module loaded successfully');
+
+// SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
 const userSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 const briefcaseSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`;
@@ -40,72 +44,43 @@ export function ProfileEditScreen({ navigation, route }) {
     registrationNumber: '',
     highestQualification: '',
   });
-  const [profilePicture, setProfilePicture] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Load existing data from user context
+    // Load existing data from user context (prefill for editing)
     if (authUser) {
       setFormData({
         fullName: authUser.name || '',
         email: authUser.email || '',
         phone: authUser.phoneNumber || '',
         specialization: authUser.specialization || '',
-        experience: authUser.experience || '',
-        currentWorkplace: authUser.organization || '',
+        experience: authUser.experience?.toString() || '',
+        currentWorkplace: authUser.currentWorkplace || authUser.organization || authUser.hospital || '',
         city: authUser.city || '',
         state: authUser.state || '',
         registrationNumber: authUser.registrationNumber || '',
-        highestQualification: authUser.highestQualification || '',
+        highestQualification: authUser.highestQualification || authUser.qualification || '',
       });
     }
   }, [authUser]);
+
 
   const updateFormData = (field, value) => {
     setFormData({ ...formData, [field]: value || '' });
   };
 
-  const pickImage = async () => {
-    try {
-      const options = {
-        mediaType: 'photo',
-        includeBase64: false,
-        maxHeight: 500,
-        maxWidth: 500,
-        quality: 0.8,
-      };
-
-      launchImageLibrary(options, (response) => {
-        if (response.didCancel) {
-          return;
-        }
-
-        if (response.errorMessage) {
-          Alert.alert('Error', response.errorMessage);
-          return;
-        }
-
-        if (response.assets && response.assets[0]) {
-          setProfilePicture(response.assets[0]);
-        }
-      });
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image');
-    }
-  };
 
   const handleSave = async () => {
-    // Validate required fields
+    // Validate required fields (personal information)
     const requiredFields = ['fullName', 'email', 'specialization', 'experience'];
     const missingFields = requiredFields.filter(field => !formData[field]);
 
     if (missingFields.length > 0) {
-      Alert.alert('Error', 'Please fill in all required fields (Name, Email, Specialization, Experience)');
+      Alert.alert('Error', `Please fill in all required fields: ${missingFields.map(f => f === 'fullName' ? 'Name' : f === 'email' ? 'Email' : f === 'specialization' ? 'Specialization' : 'Experience').join(', ')}`);
       return;
     }
 
-    // Validate email format
+    // Validate email format if provided
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (formData.email && !emailRegex.test(formData.email)) {
       Alert.alert('Error', 'Please enter a valid email address');
@@ -115,86 +90,110 @@ export function ProfileEditScreen({ navigation, route }) {
     setLoading(true);
 
     try {
-      let profilePictureUrl = authUser?.profilePicture || '';
-
-      // Upload image if selected
-      if (profilePicture) {
-        const formDataUpload = new FormData();
-        formDataUpload.append('image', {
-          uri: profilePicture.uri,
-          type: profilePicture.type || 'image/jpeg',
-          name: profilePicture.fileName || 'profile.jpg',
-        });
-
-        const uploadResponse = await fetch(`http://${IP_ADDRESS}:5000/api/upload/image`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${await AsyncStorage.getItem('token')}`,
-            // Don't set Content-Type for FormData, let fetch set it
-          },
-          body: formDataUpload,
-        });
-
-        if (uploadResponse.ok) {
-          const uploadData = await uploadResponse.json();
-          profilePictureUrl = uploadData.url;
-        } else {
-          console.warn('Image upload failed, continuing with profile update');
-        }
-      }
-
       const payload = {
         name: formData.fullName,
         email: formData.email,
         phoneNumber: formData.phone,
         specialization: formData.specialization,
         experience: parseInt(formData.experience) || 0,
-        organization: formData.currentWorkplace,
-        city: formData.city,
-        state: formData.state,
+        currentWorkplace: formData.currentWorkplace,
         registrationNumber: formData.registrationNumber,
         highestQualification: formData.highestQualification,
+        city: formData.city,
+        state: formData.state,
+        organization: formData.currentWorkplace,
         location: [formData.city, formData.state].filter(Boolean).join(', '),
-        profilePicture: profilePictureUrl,
       };
 
-      const response = await authAPI.updateProfile(payload);
+      // Try to save to backend first
+      try {
+        const response = await api.put('/profile', payload);
 
-      if (response.data?.success) {
-        const updatedUser = response.data.user || response.data.profile;
+        if (response.data?.success) {
+          console.log('Profile saved to backend successfully');
+
+          // Refresh profile data from backend
+          const freshUser = await refreshProfileData();
+          if (freshUser) {
+            // Check if profile is complete (all required fields including professional info)
+            const isProfileComplete = formData.fullName &&
+                                     formData.specialization &&
+                                     formData.experience &&
+                                     formData.currentWorkplace &&
+                                     formData.registrationNumber &&
+                                     formData.highestQualification;
+
+            // Update profile completion status
+            freshUser.isProfileComplete = isProfileComplete;
+            freshUser.profileIncomplete = !isProfileComplete;
+            updateUser(freshUser);
+
+            // Update localStorage to sync
+            await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+
+            if (isProfileComplete) {
+              // Profile is complete, navigate to main screen
+              Alert.alert('Success', 'Profile completed successfully! You can now book sessions and access all features.', [
+                { text: 'Continue', onPress: () => {
+                  navigation.navigate('Main');
+                }}
+              ]);
+            } else {
+              // Profile still incomplete, go back to profile screen
+              Alert.alert('Success', 'Profile updated successfully', [
+                { text: 'OK', onPress: () => navigation.goBack() }
+              ]);
+            }
+          } else {
+            throw new Error('Failed to refresh profile data');
+          }
+        } else {
+          throw new Error(response.data?.message || 'Update failed');
+        }
+      } catch (apiError) {
+        console.log('Backend save failed, falling back to local storage:', apiError.message);
+
+        // Fallback: save locally
+        const updatedUser = {
+          ...authUser,
+          name: payload.name,
+          email: payload.email,
+          phoneNumber: payload.phone,
+          specialization: payload.specialization,
+          experience: payload.experience,
+          currentWorkplace: payload.currentWorkplace,
+          hospital: payload.currentWorkplace,
+          organization: payload.currentWorkplace,
+          city: payload.city,
+          state: payload.state,
+          registrationNumber: payload.registrationNumber,
+          highestQualification: payload.highestQualification,
+          qualification: payload.highestQualification,
+          location: payload.location,
+          profilePicture: authUser?.profilePicture || '',
+        };
+
+        // Check profile completion status
+        const isProfileComplete = formData.fullName &&
+                                 formData.specialization &&
+                                 formData.experience &&
+                                 formData.currentWorkplace &&
+                                 formData.registrationNumber &&
+                                 formData.highestQualification;
+
+        updatedUser.isProfileComplete = isProfileComplete;
+        updatedUser.profileIncomplete = !isProfileComplete;
+
+        await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
         updateUser(updatedUser);
 
-        // Check if professional info is complete
-        const isProfessionalComplete = formData.currentWorkplace && formData.registrationNumber && formData.highestQualification;
-        if (isProfessionalComplete) {
-          updatedUser.profileIncomplete = false;
-        }
-
-        // Check if profile is now complete
-        const isProfileComplete = updatedUser.isProfileComplete || (formData.currentWorkplace && formData.registrationNumber && formData.highestQualification);
-
-        if (isProfileComplete) {
-          // Profile is complete, go to main screen
-          Alert.alert('Success', 'Profile completed successfully!', [
-            { text: 'Continue', onPress: () => {
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Main' }]
-              });
-            }}
-          ]);
-        } else {
-          // Profile still incomplete, go back
-          Alert.alert('Success', 'Profile updated successfully', [
-            { text: 'OK', onPress: () => navigation.goBack() }
-          ]);
-        }
-      } else {
-        throw new Error(response.data?.message || 'Update failed');
+        Alert.alert('Success', 'Profile updated locally (will sync when online)', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
       }
     } catch (error) {
       console.error('Profile update error:', error);
-      Alert.alert('Error', error.response?.data?.message || 'Failed to update profile');
+      Alert.alert('Error', error.response?.data?.message || 'Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -208,44 +207,18 @@ export function ProfileEditScreen({ navigation, route }) {
       <LinearGradient colors={['#2563EB', '#1D4ED8', '#1E40AF']} style={styles.header}>
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <SvgXml xml={chevronLeftSvg} width={20} height={20} color="#FFFFFF" />
+            <SvgXml xml={chevronLeftSvg} width={24} height={24} color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Edit Profile</Text>
         </View>
         {authUser?.profileIncomplete && (
-          <View style={styles.incompleteBannerSmall}>
-            <Text style={styles.incompleteBannerTextSmall}>
-              Complete your professional information
-            </Text>
-          </View>
+          <Badge variant="orange" style={styles.incompleteBadgeHeader}>
+            Complete your professional information
+          </Badge>
         )}
       </LinearGradient>
 
       <View style={styles.content}>
-
-        {/* Profile Picture */}
-        <View style={styles.profilePictureContainer}>
-          <TouchableOpacity onPress={pickImage} style={styles.profilePictureWrapper}>
-            {profilePicture ? (
-              <Image source={{ uri: profilePicture.uri }} style={styles.profilePicture} />
-            ) : authUser?.profilePicture ? (
-              <Image source={{ uri: authUser.profilePicture }} style={styles.profilePicture} />
-            ) : (
-              <View style={styles.profilePicturePlaceholder}>
-                <Text style={styles.profilePictureText}>
-                  {formData.fullName ? formData.fullName.charAt(0).toUpperCase() : 'U'}
-                </Text>
-              </View>
-            )}
-            <View style={styles.cameraIcon}>
-              <Text style={styles.cameraText}>📷</Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={pickImage} style={styles.uploadButton}>
-            <Text style={styles.uploadButtonText}>Change Photo</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Personal Information */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -266,7 +239,7 @@ export function ProfileEditScreen({ navigation, route }) {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address *</Text>
+              <Text style={styles.label}>Email Address</Text>
               <View style={styles.inputContainer}>
                 <TextInput
                   style={styles.input}
@@ -294,50 +267,57 @@ export function ProfileEditScreen({ navigation, route }) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Specialization *</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., General Nursing, Critical Care"
-                  value={formData.specialization}
-                  onChangeText={(value) => updateFormData('specialization', value)}
-                />
-              </View>
+              <Select
+                value={formData.specialization}
+                onValueChange={(value) => updateFormData('specialization', value)}
+              >
+                <SelectTrigger style={{ height: 48, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#FFFFFF', justifyContent: 'space-between' }}>
+                  <SelectValue placeholder="Select your specialization" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General Nursing</SelectItem>
+                  <SelectItem value="critical-care">Critical Care</SelectItem>
+                  <SelectItem value="pediatric">Pediatric Nursing</SelectItem>
+                  <SelectItem value="emergency">Emergency Nursing</SelectItem>
+                  <SelectItem value="oncology">Oncology</SelectItem>
+                  <SelectItem value="cardiac">Cardiac Care</SelectItem>
+                  <SelectItem value="neonatal">Neonatal Care</SelectItem>
+                  <SelectItem value="psychiatric">Psychiatric Nursing</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Years of Experience *</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., 0-1, 1-3, 3-5, 5-10, 10+"
-                  value={formData.experience}
-                  onChangeText={(value) => updateFormData('experience', value)}
-                />
-              </View>
+              <Select
+                value={formData.experience}
+                onValueChange={(value) => updateFormData('experience', value)}
+              >
+                <SelectTrigger style={{ height: 48, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#FFFFFF', justifyContent: 'space-between' }}>
+                  <SelectValue placeholder="Select experience" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0-1">0-1 years</SelectItem>
+                  <SelectItem value="1-3">1-3 years</SelectItem>
+                  <SelectItem value="3-5">3-5 years</SelectItem>
+                  <SelectItem value="5-10">5-10 years</SelectItem>
+                  <SelectItem value="10+">10+ years</SelectItem>
+                </SelectContent>
+              </Select>
             </View>
           </View>
         </View>
 
         {/* Professional Information */}
-        <View style={[styles.card, !isProfessionalInfoComplete && styles.incompleteCard]}>
+        <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleRow}>
-              <View style={styles.titleContainer}>
-                <View style={styles.titleWithIcon}>
-                  <SvgXml xml={briefcaseSvg} width={20} height={20} color="#2563EB" />
-                  <Text style={styles.cardTitle}>Professional Information</Text>
-                </View>
-                {!isProfessionalInfoComplete && (
-                  <Text style={styles.helperText}>
-                    Complete this section to unlock all features and book sessions
-                  </Text>
-                )}
+              <View style={styles.titleWithIcon}>
+                <SvgXml xml={briefcaseSvg} width={20} height={20} color="#2563EB" />
+                <Text style={[styles.cardTitle, { color: '#282623ff' }]}>Professional Information</Text>
               </View>
-              {!isProfessionalInfoComplete && (
-                <View style={styles.incompleteBadge}>
-                  <Text style={styles.incompleteBadgeText}>Incomplete</Text>
-                </View>
-              )}
+  
             </View>
           </View>
           <View style={styles.cardContent}>
@@ -369,14 +349,23 @@ export function ProfileEditScreen({ navigation, route }) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Highest Qualification</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., GNM, B.Sc Nursing, M.Sc Nursing"
-                  value={formData.highestQualification}
-                  onChangeText={(value) => updateFormData('highestQualification', value)}
-                />
-              </View>
+              <Select
+                value={formData.highestQualification}
+                onValueChange={(value) => updateFormData('highestQualification', value)}
+              >
+                <SelectTrigger style={{ height: 48, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#FFFFFF', justifyContent: 'space-between' }}>
+                  <SelectValue placeholder="Select qualification" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gnm">GNM (General Nursing & Midwifery)</SelectItem>
+                  <SelectItem value="bsc">B.Sc Nursing</SelectItem>
+                  <SelectItem value="post-bsc">Post B.Sc Nursing</SelectItem>
+                  <SelectItem value="msc">M.Sc Nursing</SelectItem>
+                  <SelectItem value="phd">Ph.D in Nursing</SelectItem>
+                  <SelectItem value="diploma">Diploma in Nursing</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </View>
           </View>
         </View>
@@ -402,33 +391,49 @@ export function ProfileEditScreen({ navigation, route }) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>State</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., Maharashtra, Delhi, Karnataka"
-                  value={formData.state}
-                  onChangeText={(value) => updateFormData('state', value)}
-                />
-              </View>
+              <Select
+                value={formData.state}
+                onValueChange={(value) => updateFormData('state', value)}
+              >
+                <SelectTrigger style={{ height: 48, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#FFFFFF', justifyContent: 'space-between' }}>
+                  <SelectValue placeholder="Select your state" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="andhra-pradesh">Andhra Pradesh</SelectItem>
+                  <SelectItem value="delhi">Delhi</SelectItem>
+                  <SelectItem value="karnataka">Karnataka</SelectItem>
+                  <SelectItem value="kerala">Kerala</SelectItem>
+                  <SelectItem value="maharashtra">Maharashtra</SelectItem>
+                  <SelectItem value="tamil-nadu">Tamil Nadu</SelectItem>
+                  <SelectItem value="telangana">Telangana</SelectItem>
+                  <SelectItem value="west-bengal">West Bengal</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </View>
           </View>
         </View>
 
         {/* Save Button */}
-        <TouchableOpacity
-          style={[styles.saveButton, loading && styles.saveButtonDisabled]}
-          onPress={handleSave}
-          disabled={loading}
+        <LinearGradient
+          colors={['#2563eb', '#9333ea']}
+          style={styles.saveButton}
         >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <>
-              <SvgXml xml={saveSvg} width={20} height={20} color="#FFFFFF" />
-              <Text style={styles.saveButtonText}>Save Changes</Text>
-            </>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.saveButtonTouchable}
+            onPress={handleSave}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <SvgXml xml={saveSvg} width={20} height={20} color="#FFFFFF" />
+                <Text style={styles.saveButtonText}>Save Changes</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </LinearGradient>
       </View>
     </ScrollView>
   );
@@ -440,47 +445,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
   },
   header: {
-    padding: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingHorizontal: 24,
+    paddingTop: 48,
+    paddingBottom: 32,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 2,
   },
   backButton: {
     padding: 8,
   },
   headerTitle: {
     color: '#FFFFFF',
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
+    marginLeft: 12,
   },
-  incompleteBannerSmall: {
-    backgroundColor: '#F97316',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginTop: 12,
+  incompleteBadgeHeader: {
+    marginTop: 8,
     alignSelf: 'flex-start',
   },
-  incompleteBannerTextSmall: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
   content: {
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingTop: 24,
   },
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    padding: 20,
+    marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -490,7 +487,7 @@ const styles = StyleSheet.create({
   incompleteCard: {
     borderWidth: 2,
     borderColor: '#fed7aa',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255, 247, 237, 0.3)',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -544,7 +541,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     color: '#374151',
-    marginBottom: 4,
+    marginBottom: 6,
     fontWeight: '500',
   },
   inputContainer: {
@@ -554,6 +551,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    height: 48,
   },
   input: {
     flex: 1,
@@ -570,17 +568,22 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   saveButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 28,
+    height: 56,
+    marginTop: 8,
+    marginBottom: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  saveButtonTouchable: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
-    marginBottom: 32,
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
+    padding: 16,
   },
   saveButtonText: {
     color: '#FFFFFF',
@@ -588,65 +591,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 8,
   },
-  profilePictureContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  profilePictureWrapper: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  profilePicture: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 4,
-    borderColor: '#2563EB',
-  },
-  profilePicturePlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#E5E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 4,
-    borderColor: '#2563EB',
-  },
-  profilePictureText: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#6B7280',
-  },
-  cameraIcon: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: '#2563EB',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-  },
-  cameraText: {
-    fontSize: 16,
-  },
-  uploadButton: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  uploadButtonText: {
-    color: '#2563EB',
-    fontSize: 14,
-    fontWeight: '600',
-  },
 });
+
 
 export default ProfileEditScreen;

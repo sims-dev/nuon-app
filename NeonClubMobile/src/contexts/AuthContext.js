@@ -45,16 +45,53 @@ export const AuthProvider = ({ children }) => {
           userStr = await AsyncStorage.getItem('profile');
         }
 
-        if (token && userStr) {
-          const user = JSON.parse(userStr);
-          setTokenState(token);
-          setRefreshTokenState(refreshToken);
-          setUser(user);
-          api.defaults.headers.common.Authorization = `Bearer ${token}`;
-          console.log('[AuthContext] Loaded existing auth data');
-        } else {
-          console.log('[AuthContext] No existing auth data, starting fresh');
-        }
+        if (token) {
+           // Always try to fetch fresh user data from server if we have a token (skip for test tokens)
+           if (!token.startsWith('test_')) {
+             try {
+               console.log('[AuthContext] Fetching fresh user data from server...');
+               // Use Promise.race to manually timeout the request
+               const profilePromise = api.get('/user/me');
+               const timeoutPromise = new Promise((_, reject) =>
+                 setTimeout(() => reject(new Error('Profile fetch timeout')), 3000)
+               );
+               const profileResponse = await Promise.race([profilePromise, timeoutPromise]);
+               if (profileResponse.data?.success && profileResponse.data?.user) {
+                 const freshUser = profileResponse.data.user;
+                 setTokenState(token);
+                 setRefreshTokenState(refreshToken);
+                 setUser(freshUser);
+                 // Update stored user data with fresh data
+                 await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+                 api.defaults.headers.common.Authorization = `Bearer ${token}`;
+                 console.log('[AuthContext] Loaded fresh user data from server');
+                 // Ensure profileIncomplete is set
+                 updateUser(freshUser);
+                 return;
+               }
+             } catch (error) {
+               console.warn('[AuthContext] Failed to fetch fresh user data, using stored data:', error.message);
+               // On profile API failure, set profileIncomplete to true but keep user
+               setUser(prev => ({ ...prev, profileIncomplete: true }));
+             }
+           }
+
+           // Fallback to stored user data if server fetch fails
+           if (userStr) {
+             const user = JSON.parse(userStr);
+             setTokenState(token);
+             setRefreshTokenState(refreshToken);
+             setUser(user);
+             api.defaults.headers.common.Authorization = `Bearer ${token}`;
+             console.log('[AuthContext] Loaded stored auth data as fallback');
+             // Ensure profileIncomplete is set
+             updateUser(user);
+           } else {
+             console.log('[AuthContext] Token exists but no user data available');
+           }
+         } else {
+           console.log('[AuthContext] No existing auth data, starting fresh');
+         }
       } catch (error) {
         console.error('[AuthContext] Error loading auth data:', error);
       } finally {
@@ -65,14 +102,38 @@ export const AuthProvider = ({ children }) => {
     loadAuth();
 
     // Listen for token refresh events
-    const tokenRefreshListener = DeviceEventEmitter.addListener('tokenRefreshed', (newToken) => {
+    const tokenRefreshListener = DeviceEventEmitter.addListener('tokenRefreshed', async (newToken) => {
       setTokenState(newToken);
       api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
       socketService.updateToken(newToken);
+      // Fetch fresh user data on token refresh
+      setLoading(true);
+      try {
+        const profileResponse = await api.get('/user/me');
+        if (profileResponse.data?.success && profileResponse.data?.user) {
+          const freshUser = profileResponse.data.user;
+          setUser(freshUser);
+          await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+        }
+      } catch (error) {
+        console.warn('Failed to fetch user on token refresh:', error);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // Listen for token cleared events
+    const tokenClearedListener = DeviceEventEmitter.addListener('tokenCleared', () => {
+      setTokenState(null);
+      setRefreshTokenState(null);
+      setUser(null);
+      delete api.defaults.headers.common.Authorization;
+      socketService.disconnect();
     });
 
     return () => {
       tokenRefreshListener.remove();
+      tokenClearedListener.remove();
     };
   }, []);
 
@@ -108,22 +169,31 @@ export const AuthProvider = ({ children }) => {
   const updateUser = async (userData) => {
     console.log('[AuthContext] Updating user:', userData);
     console.log('[AuthContext] isProfileComplete:', userData?.isProfileComplete);
-    
-    // Check if profile is incomplete
-    const profileIncomplete = checkProfileIncomplete(userData);
-    const updatedUserData = {
-      ...userData,
-      profileIncomplete
-    };
-    
-    setUser(updatedUserData);
-    await AsyncStorage.setItem('user', JSON.stringify(updatedUserData));
-    console.log('[AuthContext] User updated in context and storage, profileIncomplete:', profileIncomplete);
+    console.log('[AuthContext] profileIncomplete in userData:', userData?.profileIncomplete);
+
+    setUser(prev => {
+      // Use profileIncomplete from backend if provided, otherwise compute it
+      const profileIncomplete = userData.profileIncomplete !== undefined ? userData.profileIncomplete : checkProfileIncomplete({ ...prev, ...userData });
+      const updatedUserData = {
+        ...prev,
+        ...userData,
+        profileIncomplete
+      };
+      AsyncStorage.setItem('user', JSON.stringify(updatedUserData));
+      console.log('[AuthContext] User updated in context and storage, profileIncomplete:', profileIncomplete);
+      return updatedUserData;
+    });
   };
 
   // Helper function to check if profile is incomplete
   const checkProfileIncomplete = (userData) => {
     if (!userData) return true;
+
+    // If backend explicitly says profile is complete, trust it
+    if (userData.isProfileComplete === true) {
+      console.log('[AuthContext] Profile marked as complete by backend');
+      return false;
+    }
 
     // Check required fields for complete profile
     const requiredFields = [
@@ -131,8 +201,6 @@ export const AuthProvider = ({ children }) => {
       'email',
       'specialization',
       'experience',
-      'organization', // currentWorkplace
-      'registrationNumber',
       'highestQualification',
       'city',
       'state'
@@ -148,11 +216,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signUp = async (userData) => {
-  const res = await api.post('/register', userData);
+    const res = await api.post('/register', userData);
     return res.data;
   };
 
-  const setToken = (newToken) => {
+  const setToken = async (newToken) => {
+    if (newToken) {
+      await AsyncStorage.setItem('token', newToken);
+    } else {
+      await AsyncStorage.removeItem('token');
+    }
     setTokenState(newToken);
     if (newToken) {
       api.defaults.headers.common.Authorization = `Bearer ${newToken}`;

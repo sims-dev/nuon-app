@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { UploadService } from './upload.service';
+import { NotificationService } from './notification.service';
 import { getSocket } from '../lib/socket';
 
 @Injectable()
 export class MentorService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly uploadService: UploadService,
+        private readonly notificationService: NotificationService
+    ) {}
 
     private async getRoleId(roleName: string): Promise<bigint> {
         const role = await this.prisma.role.findFirst({
@@ -97,7 +103,7 @@ export class MentorService {
                     department: mentorData.department || '',
                     hospital: mentorData.hospital || '',
                     organization: mentorData.organization || '',
-                    phoneNumber: mentorData.phoneNumber || '',
+                    phoneNumber: mentorData.phoneNumber || null,
                     bio: mentorData.bio || '',
                     profilePicture: mentorData.profilePicture || '',
                     isMentor: mentorData.isMentor || true,
@@ -226,8 +232,7 @@ export class MentorService {
             const slots = await this.prisma.mentorAvailability.findMany({
                 where: {
                     mentorId,
-                    isActive: true,
-                    currentBookings: { lt: 1 } // Less than maxBookings (assuming maxBookings = 1)
+                    isActive: true
                 }
             });
 
@@ -357,7 +362,27 @@ export class MentorService {
             });
 
             if (!mentor) {
-                throw new Error('Mentor not found');
+                // Return default profile instead of throwing error
+                return {
+                    name: '',
+                    email: '',
+                    specialization: '',
+                    experience: '',
+                    currentWorkplace: '',
+                    city: '',
+                    state: '',
+                    registrationNumber: '',
+                    highestQualification: '',
+                    bio: '',
+                    organization: '',
+                    profilePicture: '',
+                    phoneNumber: '',
+                    role: 'mentor',
+                    hourlyRate: '',
+                    qualification: '',
+                    department: '',
+                    hospital: ''
+                };
             }
 
             return {
@@ -371,6 +396,8 @@ export class MentorService {
                 registrationNumber: mentor.registrationNumber || '',
                 highestQualification: mentor.qualification || '',
                 bio: mentor.bio || '',
+                expertiseAreas: (mentor as any).expertiseAreas || [],
+                sessionFocus: (mentor as any).sessionFocus || '',
                 organization: mentor.organization || '',
                 profilePicture: mentor.profilePicture || '',
                 phoneNumber: mentor.phoneNumber || '',
@@ -381,35 +408,104 @@ export class MentorService {
                 hospital: mentor.hospital || ''
             };
         } catch (error) {
-            throw new Error((error as Error).message);
+            console.error('Error in getProfile:', error);
+            // Return default profile on error
+            return {
+                name: '',
+                email: '',
+                specialization: '',
+                experience: '',
+                currentWorkplace: '',
+                city: '',
+                state: '',
+                registrationNumber: '',
+                highestQualification: '',
+                bio: '',
+                organization: '',
+                profilePicture: '',
+                phoneNumber: '',
+                role: 'mentor',
+                hourlyRate: '',
+                qualification: '',
+                department: '',
+                hospital: ''
+            };
         }
     }
 
     async updateProfile(mentorId: bigint, updates: any): Promise<any> {
         try {
+            console.log('[DEBUG] updateProfile called with mentorId:', mentorId, 'updates:', updates);
+
+            // Check if phoneNumber is being changed and if it's already taken by another user
+            if (updates.phoneNumber && updates.phoneNumber.trim() !== '') {
+                const existingUser = await this.prisma.user.findFirst({
+                    where: {
+                        phoneNumber: updates.phoneNumber.trim(),
+                        id: { not: mentorId } // Exclude current user
+                    }
+                });
+                if (existingUser) {
+                    throw new Error('Phone number is already in use by another user');
+                }
+            }
+
+            // Safely parse experience
+            let experienceValue = null;
+            if (updates.experience !== undefined && updates.experience !== null && updates.experience.toString().trim() !== '') {
+                const exp = parseInt(updates.experience.toString(), 10);
+                if (!isNaN(exp) && exp >= 0) {
+                    experienceValue = exp;
+                }
+            }
+
+            // Safely parse hourlyRate
+            let hourlyRateValue = null;
+            if (updates.hourlyRate !== undefined && updates.hourlyRate !== null && updates.hourlyRate.toString().trim() !== '') {
+                const rate = parseFloat(updates.hourlyRate.toString());
+                if (!isNaN(rate) && rate >= 0) {
+                    hourlyRateValue = rate;
+                }
+            }
+
             const data: any = {
-                name: updates.name,
-                email: updates.email ? updates.email.toLowerCase() : undefined,
-                specialization: updates.specialization,
-                experience: updates.experience ? parseInt(updates.experience.toString(), 10) : null,
-                hospital: updates.currentWorkplace, // Map to hospital field
-                registrationNumber: updates.registrationNumber,
-                qualification: updates.highestQualification,
-                city: updates.city,
-                state: updates.state,
-                organization: updates.organization,
-                phoneNumber: updates.phoneNumber,
-                hourlyRate: updates.hourlyRate ? parseFloat(updates.hourlyRate.toString()) : null,
-                department: updates.department,
-                profilePicture: updates.profilePicture,
-                bio: updates.bio,
+                name: updates.name || undefined,
+                email: updates.email ? updates.email.toLowerCase().trim() : undefined,
+                specialization: updates.specialization || undefined,
+                experience: experienceValue,
+                hospital: updates.currentWorkplace || undefined, // Map to hospital field
+                registrationNumber: updates.registrationNumber || undefined,
+                qualification: updates.highestQualification || undefined,
+                city: updates.city || undefined,
+                state: updates.state || undefined,
+                organization: updates.organization || undefined,
+                phoneNumber: updates.phoneNumber ? updates.phoneNumber.trim() : undefined,
+                hourlyRate: hourlyRateValue,
+                department: updates.department || undefined,
+                profilePicture: updates.profilePicture || undefined,
+                bio: updates.bio || undefined,
                 isProfileComplete: true
             };
+
+            // Remove undefined values to avoid updating with undefined
+            Object.keys(data).forEach(key => {
+                if (data[key] === undefined) {
+                    delete data[key];
+                }
+            });
+
+            console.log('[DEBUG] Prepared data for update:', data);
 
             const updatedMentor = await this.prisma.user.update({
                 where: { id: mentorId },
                 data
             });
+
+            // Emit socket event for real-time updates
+            const io = getSocket();
+            if (io) {
+                io.emit('mentor_profile_updated', updatedMentor);
+            }
 
             return {
                 success: true,
@@ -417,6 +513,7 @@ export class MentorService {
                 mentor: updatedMentor
             };
         } catch (error) {
+            console.error('[DEBUG] Error in updateProfile:', error);
             throw new Error((error as Error).message);
         }
     }
@@ -425,11 +522,13 @@ export class MentorService {
         try {
             console.log('Creating availability slot with data:', data);
             const {
-                title,
-                description,
-                startDateTime,
-                endDateTime,
-                duration,
+                title = 'Mentorship Session',
+                description = '',
+                startDate,
+                endDate,
+                startTime,
+                endTime,
+                duration = 45,
                 maxBookings = 1,
                 price,
                 sessionType = 'mentoring',
@@ -437,80 +536,126 @@ export class MentorService {
                 specializations = []
             } = data;
 
-            console.log('Parsed data:', { title, description, startDateTime, endDateTime, duration, maxBookings, price, sessionType, meetingType, specializations });
+            console.log('Parsed data:', { title, description, startDate, endDate, startTime, endTime, duration, maxBookings, price, sessionType, meetingType, specializations });
 
+            // Validate required fields
+            if (!startDate || !endDate || !startTime || !endTime) {
+                throw new Error('Start date, end date, start time, and end time are required');
+            }
+
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate);
+
+            // Validate dates
+            if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
+                throw new Error('Invalid date format provided');
+            }
+
+            if (startDateObj > endDateObj) {
+                throw new Error('Start date must be before or equal to end date');
+            }
+
+            if (startDateObj < new Date(new Date().setHours(0, 0, 0, 0))) {
+                throw new Error('Start date must be today or in the future');
+            }
+
+            // Parse times
+            const [startHour, startMinute] = startTime.split(':').map(Number);
+            const [endHour, endMinute] = endTime.split(':').map(Number);
+
+            if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
+                throw new Error('Invalid time format provided');
+            }
+
+            const slotDurationMs = duration * 60 * 1000; // 45 minutes in ms
             const meetingLink = '';
 
-            const start = new Date(startDateTime);
-            const end = new Date(endDateTime);
+            const slots = [];
 
-            console.log('Parsed dates:', { start, end });
+            // Loop through each date in the range
+            for (let currentDate = new Date(startDateObj); currentDate <= endDateObj; currentDate.setDate(currentDate.getDate() + 1)) {
+                const dateStr = currentDate.toISOString().split('T')[0];
 
-            if (start >= end) {
-                throw new Error('Start time must be before end time');
-            }
+                // Create start and end DateTime for this date
+                const dayStart = new Date(`${dateStr}T${startTime}:00`);
+                const dayEnd = new Date(`${dateStr}T${endTime}:00`);
 
-            if (start <= new Date()) {
-                throw new Error('Start time must be in the future');
-            }
+                if (dayStart >= dayEnd) {
+                    throw new Error(`Invalid time range for date ${dateStr}: start time must be before end time`);
+                }
 
-            // Check for overlapping slots
-            const overlapping = await this.prisma.mentorAvailability.findFirst({
-                where: {
-                    mentorId,
-                    isActive: true,
-                    OR: [
-                        {
-                            AND: [
-                                { startDateTime: { lte: end } },
-                                { endDateTime: { gte: start } }
+                // Generate 45-minute slots for this day
+                for (let slotStart = new Date(dayStart); slotStart < dayEnd; slotStart.setTime(slotStart.getTime() + slotDurationMs)) {
+                    const slotEnd = new Date(slotStart.getTime() + slotDurationMs);
+
+                    // Don't create slots that extend beyond the daily end time
+                    if (slotEnd > dayEnd) {
+                        break;
+                    }
+
+                    // Check for overlapping slots
+                    const overlapping = await this.prisma.mentorAvailability.findFirst({
+                        where: {
+                            mentorId,
+                            date: currentDate,
+                            isActive: true,
+                            OR: [
+                                {
+                                    AND: [
+                                        { startDateTime: { lt: slotEnd } },
+                                        { endDateTime: { gt: slotStart } }
+                                    ]
+                                }
                             ]
                         }
-                    ]
-                }
-            });
+                    });
 
-            if (overlapping) {
-                throw new Error('This time slot overlaps with an existing availability');
+                    if (overlapping) {
+                        throw new Error(`Slot ${slotStart.toLocaleTimeString()} - ${slotEnd.toLocaleTimeString()} on ${dateStr} overlaps with an existing availability`);
+                    }
+
+                    const createData = {
+                        mentorId: BigInt(mentorId),
+                        date: new Date(currentDate),
+                        title,
+                        description,
+                        startDateTime: new Date(slotStart),
+                        endDateTime: new Date(slotEnd),
+                        duration: parseInt(duration.toString(), 10),
+                        maxBookings: parseInt(maxBookings.toString(), 10),
+                        price: price ? parseFloat(price.toString()) : null,
+                        sessionType,
+                        meetingType,
+                        meetingLink,
+                        specializations: specializations || null,
+                        isActive: true // All slots start as active
+                    };
+
+                    const availability = await this.prisma.mentorAvailability.create({
+                        data: createData,
+                        include: {
+                            mentor: { select: { id: true, name: true, email: true } }
+                        }
+                    });
+
+                    slots.push(availability);
+                }
             }
 
-            // TODO: Create Zoom meeting if meetingType is zoom
-
-            const createData = {
-                mentorId: BigInt(mentorId),
-                date: new Date(startDateTime),
-                title,
-                description,
-                startDateTime: start,
-                endDateTime: end,
-                duration: parseInt(duration.toString(), 10),
-                maxBookings: parseInt(maxBookings.toString(), 10),
-                price: price ? parseFloat(price.toString()) : null,
-                sessionType,
-                meetingType,
-                meetingLink,
-                specializations: specializations || null
-            };
-
-            console.log('Creating availability with data:', createData);
-
-            const availability = await this.prisma.mentorAvailability.create({
-                data: createData,
-                include: {
-                    mentor: { select: { id: true, name: true, email: true } }
-                }
-            });
+            if (slots.length === 0) {
+                throw new Error('No slots could be created with the given parameters');
+            }
 
             // Emit socket event for real-time updates
             const io = getSocket();
             if (io) {
-                io.emit('new_mentor_availability', availability);
+                slots.forEach(slot => io.emit('new_mentor_availability', slot));
             }
 
             return {
                 success: true,
-                message: 'Availability slot created successfully',
-                availability
+                message: `${slots.length} availability slots created successfully across ${Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1} days`,
+                availability: slots
             };
         } catch (error) {
             console.error('Error in createAvailabilitySlot:', error);
@@ -570,10 +715,6 @@ export class MentorService {
                 throw new Error('Availability slot not found');
             }
 
-            if (slot.currentBookings > 0) {
-                throw new Error('Cannot modify slot with existing bookings');
-            }
-
             if (updates.startDateTime && updates.endDateTime) {
                 const start = new Date(updates.startDateTime);
                 const end = new Date(updates.endDateTime);
@@ -585,6 +726,17 @@ export class MentorService {
                 if (start <= new Date()) {
                     throw new Error('Start time must be in the future');
                 }
+            }
+
+            // Parse numeric fields
+            if (updates.maxBookings !== undefined) {
+                updates.maxBookings = parseInt(updates.maxBookings.toString(), 10);
+            }
+            if (updates.duration !== undefined) {
+                updates.duration = parseInt(updates.duration.toString(), 10);
+            }
+            if (updates.price !== undefined) {
+                updates.price = parseFloat(updates.price.toString());
             }
 
             const updatedSlot = await this.prisma.mentorAvailability.update({
@@ -621,10 +773,6 @@ export class MentorService {
                 throw new Error('Availability slot not found');
             }
 
-            if (slot.currentBookings > 0) {
-                throw new Error('Cannot delete slot with existing bookings. Cancel bookings first.');
-            }
-
             await this.prisma.mentorAvailability.delete({
                 where: { id: slotId }
             });
@@ -647,7 +795,8 @@ export class MentorService {
     async bookMentorSession(userId: bigint, data: { availabilityId: string; notes?: string }): Promise<any> {
         try {
             const availability = await this.prisma.mentorAvailability.findUnique({
-                where: { id: BigInt(data.availabilityId) }
+                where: { id: BigInt(data.availabilityId) },
+                include: { mentor: true }
             });
 
             if (!availability) {
@@ -670,27 +819,27 @@ export class MentorService {
                 throw new Error('You already have a booking for this slot');
             }
 
+            // Use mentor's hourly rate instead of slot price
+            const mentorPrice = availability.mentor.hourlyRate || 0;
+            const bookingStatus = 'pending';
+
             const booking = await this.prisma.booking.create({
                 data: {
                     nurseId: userId,
                     mentorId: availability.mentorId,
                     mentorAvailabilityId: availability.id,
                     dateTime: availability.startDateTime,
-                    status: 'pending',
+                    status: bookingStatus,
                     notes: data.notes || '',
-                    price: availability.price,
+                    price: mentorPrice,
                     zoomLink: availability.meetingLink
                 },
                 include: {
-                    mentor: { select: { id: true, name: true, email: true } },
+                    mentor: { select: { id: true, name: true, email: true, hourlyRate: true } },
                     nurse: { select: { id: true, name: true, email: true } }
                 }
             });
 
-            await this.prisma.mentorAvailability.update({
-                where: { id: availability.id },
-                data: { currentBookings: { increment: 1 } }
-            });
 
             // Emit socket event for real-time updates
             const io = getSocket();
@@ -703,6 +852,54 @@ export class MentorService {
                 success: true,
                 message: 'Booking request submitted successfully',
                 booking
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async confirmBooking(bookingId: bigint): Promise<any> {
+        try {
+            const booking = await this.prisma.booking.findUnique({
+                where: { id: bookingId },
+                include: { mentorAvailability: true }
+            });
+
+            if (!booking) {
+                throw new Error('Booking not found');
+            }
+
+            if (booking.status !== 'pending') {
+                throw new Error('Booking is not in pending status');
+            }
+
+            // Update booking status to confirmed
+            const updatedBooking = await this.prisma.booking.update({
+                where: { id: bookingId },
+                data: { status: 'confirmed' },
+                include: {
+                    mentor: { select: { id: true, name: true, email: true } },
+                    nurse: { select: { id: true, name: true, email: true } }
+                }
+            });
+
+            // Increment currentBookings
+            await this.prisma.mentorAvailability.update({
+                where: { id: booking.mentorAvailabilityId },
+                data: { currentBookings: { increment: 1 } }
+            });
+
+            // Emit socket event
+            const io = getSocket();
+            if (io) {
+                io.emit('booking_confirmed', updatedBooking);
+                io.emit('booking_update', updatedBooking);
+            }
+
+            return {
+                success: true,
+                message: 'Booking confirmed successfully',
+                booking: updatedBooking
             };
         } catch (error) {
             throw new Error((error as Error).message);
@@ -729,7 +926,7 @@ export class MentorService {
         }
     }
 
-    async applyForMentor(userId: bigint, data: any): Promise<any> {
+    async applyForMentor(userId: bigint, data: any, photo?: any): Promise<any> {
         try {
             // Get mentor role id
             const mentorRole = await this.prisma.role.findFirst({
@@ -747,6 +944,13 @@ export class MentorService {
                 throw new Error('You are already registered as a mentor');
             }
 
+            // Handle photo upload if provided
+            let profilePictureUrl = '';
+            if (photo) {
+                const uploadResult = await this.uploadService.uploadImage(photo);
+                profilePictureUrl = uploadResult.url;
+            }
+
             const updatedUser = await this.prisma.user.update({
                 where: { id: userId },
                 data: {
@@ -758,7 +962,7 @@ export class MentorService {
                     hourlyRate: data.hourlyRate ? parseFloat(data.hourlyRate.toString()) : 0,
                     specialization: data.specializations || [],
                     experience: data.experience ? parseInt(data.experience.toString(), 10) : 0,
-                    profilePicture: data.profilePicture || '',
+                    profilePicture: profilePictureUrl || data.profilePicture || '',
                     availability: 'available'
                 }
             });
@@ -942,7 +1146,11 @@ export class MentorService {
     async rescheduleBooking(bookingId: bigint, mentorId: bigint, newDateTime: Date): Promise<any> {
         try {
             const booking = await this.prisma.booking.findFirst({
-                where: { id: bookingId, mentorId }
+                where: { id: bookingId, mentorId },
+                include: {
+                    mentor: { select: { id: true, name: true, email: true } },
+                    nurse: { select: { id: true, name: true, email: true } }
+                }
             });
 
             if (!booking) {
@@ -953,16 +1161,32 @@ export class MentorService {
                 throw new Error('Cannot reschedule booking with current status');
             }
 
+            // Check reschedule count - allow only one reschedule per booking
+            const currentRescheduleCount = (booking as any).rescheduleCount || 0;
+            if (currentRescheduleCount >= 1) {
+                throw new Error('Reschedule limit reached. Only one reschedule allowed per booking.');
+            }
+
             const updatedBooking = await this.prisma.booking.update({
                 where: { id: bookingId },
                 data: {
                     dateTime: newDateTime,
-                    status: 'rescheduled'
-                },
+                    status: 'rescheduled',
+                    ...(currentRescheduleCount === 0 ? { rescheduleCount: 1 } : {})
+                } as any,
                 include: {
                     mentor: { select: { id: true, name: true, email: true } },
                     nurse: { select: { id: true, name: true, email: true } }
                 }
+            });
+
+            // Create notification for the nurse
+            await this.notificationService.createNotification({
+                userId: booking.nurseId.toString(),
+                title: 'Session Rescheduled',
+                body: `Your session with ${booking.mentor.name} has been rescheduled to ${new Date(newDateTime).toLocaleString()}`,
+                type: 'booking_rescheduled',
+                payload: { bookingId: bookingId.toString() }
             });
 
             // Emit socket event for real-time updates

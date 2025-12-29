@@ -5,6 +5,7 @@ import DashboardHome from './DashboardHome';
 import Profile from './Profile';
 import Availability from './Availability';
 import SessionRequests from './SessionRequests';
+import MySessions from './MySessions';
 import SessionHistory from './SessionHistory';
 import Notifications from './Notifications';
 import { useAuth } from './AuthContext';
@@ -22,6 +23,7 @@ const App = () => (
       <Route path="/mentor/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/mentor/availability" element={<ProtectedRoute><Availability /></ProtectedRoute>} />
       <Route path="/mentor/sessions" element={<ProtectedRoute><SessionRequests /></ProtectedRoute>} />
+      <Route path="/mentor/my-sessions" element={<ProtectedRoute><MySessions /></ProtectedRoute>} />
       <Route path="/mentor/history" element={<ProtectedRoute><SessionHistory /></ProtectedRoute>} />
       <Route path="/mentor/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/mentor/login" replace />} />

@@ -17,37 +17,64 @@ export class EventService {
             });
 
             // Format events for frontend compatibility
-            const formatted = events.map(ev => ({
-                _id: ev.id.toString(),
-                id: ev.id.toString(),
-                title: ev.title,
-                description: ev.description,
-                price: ev.price,
-                thumbnail: ev.thumbnail || ev.imageUrl || null,
-                imageUrl: ev.imageUrl || null,
-                date: ev.date,
-                startDate: (ev as any).startDate,
-                endDate: (ev as any).endDate,
-                time: ev.time,
-                duration: ev.duration,
-                capacity: ev.capacity,
-                registeredCount: ev.registeredCount,
-                seats: ev.capacity && ev.registeredCount != null ? ev.capacity - ev.registeredCount : null,
-                venueName: ev.venueName,
-                venueAddress: ev.venueAddress,
-                venueCity: ev.venueCity,
-                location: ev.venueName || ev.venueCity || ev.venueAddress || null,
-                category: (ev as any).category || (ev as any).type || 'event',
-                videoUrl: ev.videoUrl || null,
-                videoTitle: ev.videoTitle || null,
-                videoDuration: ev.videoDuration || null,
-                videoQuality: ev.videoQuality || null,
-                videoThumbnail: ev.videoThumbnail || null,
-                instructor: ev.instructor,
-                createdAt: ev.createdAt,
-                updatedAt: ev.updatedAt,
-                raw: ev
-            }));
+            const formatted = events.map(ev => {
+                // Format date
+                let formattedDate = '';
+                if (ev.startDate && ev.endDate) {
+                    const start = new Date(ev.startDate);
+                    const end = new Date(ev.endDate);
+                    const startMonth = start.toLocaleString('en-US', { month: 'short' });
+                    const endMonth = end.toLocaleString('en-US', { month: 'short' });
+                    const startDay = start.getDate();
+                    const endDay = end.getDate();
+                    const year = start.getFullYear();
+                    if (startMonth === endMonth) {
+                        formattedDate = `${startMonth} ${startDay}-${endDay}, ${year}`;
+                    } else {
+                        formattedDate = `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
+                    }
+                } else if (ev.date) {
+                    const date = new Date(ev.date);
+                    formattedDate = date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+                }
+
+                return {
+                    _id: ev.id.toString(),
+                    id: ev.id.toString(),
+                    title: ev.title,
+                    description: ev.description,
+                    price: ev.price,
+                    points: ev.points,
+                    thumbnail: ev.thumbnail || ev.imageUrl || null,
+                    imageUrl: ev.imageUrl || null,
+                    date: formattedDate,
+                    startDate: (ev as any).startDate,
+                    endDate: (ev as any).endDate,
+                    time: ev.time,
+                    duration: ev.duration,
+                    capacity: ev.capacity,
+                    registeredCount: ev.registeredCount,
+                    seats: ev.capacity && ev.registeredCount != null ? ev.capacity - ev.registeredCount : null,
+                    venueName: ev.venueName,
+                    venueAddress: ev.venueAddress,
+                    venueCity: ev.venueCity,
+                    location: ev.venueName || ev.venueCity || ev.venueAddress || null,
+                    category: (ev as any).category || (ev as any).type || 'event',
+                    videoUrl: ev.videoUrl || null,
+                    videoTitle: ev.videoTitle || null,
+                    videoDuration: ev.videoDuration || null,
+                    videoQuality: ev.videoQuality || null,
+                    videoThumbnail: ev.videoThumbnail || null,
+                    instructor: ev.instructor,
+                    createdAt: ev.createdAt,
+                    updatedAt: ev.updatedAt,
+                    raw: ev
+                };
+            });
 
             return {
                 success: true,
@@ -73,15 +100,40 @@ export class EventService {
                 throw new Error('Event not found');
             }
 
+            // Format date
+            let formattedDate = '';
+            if ((event as any).startDate && (event as any).endDate) {
+                const start = new Date((event as any).startDate);
+                const end = new Date((event as any).endDate);
+                const startMonth = start.toLocaleString('en-US', { month: 'short' });
+                const endMonth = end.toLocaleString('en-US', { month: 'short' });
+                const startDay = start.getDate();
+                const endDay = end.getDate();
+                const year = start.getFullYear();
+                if (startMonth === endMonth) {
+                    formattedDate = `${startMonth} ${startDay}-${endDay}, ${year}`;
+                } else {
+                    formattedDate = `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
+                }
+            } else if (event.date) {
+                const date = new Date(event.date);
+                formattedDate = date.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+            }
+
             const formatted = {
                 _id: event.id.toString(),
                 id: event.id.toString(),
                 title: event.title,
                 description: event.description,
                 price: event.price,
+                points: event.points,
                 thumbnail: event.thumbnail || event.imageUrl || null,
                 imageUrl: event.imageUrl || null,
-                date: event.date,
+                date: formattedDate,
                 startDate: (event as any).startDate,
                 endDate: (event as any).endDate,
                 time: event.time,
@@ -331,9 +383,68 @@ export class EventService {
                 }
             });
 
+            const formatted = events.map(ev => {
+                // Format date
+                let formattedDate = '';
+                if ((ev as any).startDate && (ev as any).endDate) {
+                    const start = new Date((ev as any).startDate);
+                    const end = new Date((ev as any).endDate);
+                    const startMonth = start.toLocaleString('en-US', { month: 'short' });
+                    const endMonth = end.toLocaleString('en-US', { month: 'short' });
+                    const startDay = start.getDate();
+                    const endDay = end.getDate();
+                    const year = start.getFullYear();
+                    if (startMonth === endMonth) {
+                        formattedDate = `${startMonth} ${startDay}-${endDay}, ${year}`;
+                    } else {
+                        formattedDate = `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
+                    }
+                } else if (ev.date) {
+                    const date = new Date(ev.date);
+                    formattedDate = date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+                }
+
+                return {
+                    _id: ev.id.toString(),
+                    id: ev.id.toString(),
+                    title: ev.title,
+                    description: ev.description,
+                    price: ev.price,
+                    points: ev.points,
+                    thumbnail: ev.thumbnail || ev.imageUrl || null,
+                    imageUrl: ev.imageUrl || null,
+                    date: formattedDate,
+                    startDate: (ev as any).startDate,
+                    endDate: (ev as any).endDate,
+                    time: ev.time,
+                    duration: ev.duration,
+                    capacity: ev.capacity,
+                    registeredCount: ev.registeredCount,
+                    seats: ev.capacity && ev.registeredCount != null ? ev.capacity - ev.registeredCount : null,
+                    venueName: ev.venueName,
+                    venueAddress: ev.venueAddress,
+                    venueCity: ev.venueCity,
+                    location: ev.venueName || ev.venueCity || ev.venueAddress || null,
+                    category: (ev as any).category || (ev as any).type || 'event',
+                    videoUrl: ev.videoUrl || null,
+                    videoTitle: ev.videoTitle || null,
+                    videoDuration: ev.videoDuration || null,
+                    videoQuality: ev.videoQuality || null,
+                    videoThumbnail: ev.videoThumbnail || null,
+                    instructor: ev.instructor,
+                    createdAt: ev.createdAt,
+                    updatedAt: ev.updatedAt,
+                    raw: ev
+                };
+            });
+
             return {
                 success: true,
-                events
+                events: formatted
             };
         } catch (error) {
             throw new Error((error as Error).message);

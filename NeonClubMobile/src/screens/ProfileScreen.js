@@ -9,6 +9,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
 import { CommonActions } from '@react-navigation/native';
 import { useContext } from 'react';
@@ -25,6 +26,9 @@ const trophySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24
 const receiptSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h4"/><path d="M16 12h4"/><path d="M16 16h4"/></svg>`;
 const awardSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.174 0l-3.58 2.687a.5.5 0 0 1-.81-.47l1.515-8.526"/><circle cx="12" cy="8" r="6"/></svg>`;
 const briefcaseSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`;
+const clockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+const buildingSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><rect width="6" height="8" x="9" y="6"/><line x1="7" x2="7" y1="10" y2="10"/><line x1="7" x2="7" y1="14" y2="14"/><line x1="7" x2="7" y1="18" y2="18"/><line x1="17" x2="17" y1="10" y2="10"/><line x1="17" x2="17" y1="14" y2="14"/><line x1="17" x2="17" y1="18" y2="18"/></svg>`;
+const graduationCapSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="m6 12 8 4 8-4"/><path d="M6 12v4c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-4"/></svg>`;
 const share2Svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98"/><path d="m15.41 6.51-6.82 3.98"/></svg>`;
 const downloadSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`;
 const bellSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
@@ -96,11 +100,24 @@ const ProfileScreen = ({ navigation }) => {
     const [user, setUser] = useState(null);
     const [myCourses, setMyCourses] = useState([]);
     const [nccStatus, setNccStatus] = useState(null);
+    const [mentorshipSessions, setMentorshipSessions] = useState(0);
+    const [workshopsCount, setWorkshopsCount] = useState(0);
     const [loading, setLoading] = useState(false); // Start with false to show profile immediately
+    const [profileIncomplete, setProfileIncomplete] = useState(false);
     const { user: authUser, signOut, updateUser } = useContext(AuthContext);
 
     // Define safeGoToPrivacy if not exists
     navigation.safeGoToPrivacy = navigation.safeGoToPrivacy || ((screen) => navigation.navigate(screen));
+
+    const computeProfileIncomplete = (userData) => {
+      if (!userData) return false;
+      if (userData.isProfileComplete === true) return false;
+      const missingFields = [];
+      if (!userData.organization && !userData.hospital && !userData.currentWorkplace) missingFields.push('Current Workplace');
+      if (!userData.registrationNumber) missingFields.push('Registration Number');
+      if (!userData.qualification && !userData.highestQualification) missingFields.push('Highest Qualification');
+      return missingFields.length > 0;
+    };
 
    useEffect(() => {
       console.log('[ProfileScreen] useEffect triggered, authUser:', authUser);
@@ -108,6 +125,7 @@ const ProfileScreen = ({ navigation }) => {
       if (authUser) {
         console.log('[ProfileScreen] Setting user from auth context:', authUser);
         setUser(authUser);
+        setProfileIncomplete(computeProfileIncomplete(authUser));
       } else {
         console.log('[ProfileScreen] No authUser in context');
       }
@@ -117,16 +135,20 @@ const ProfileScreen = ({ navigation }) => {
         if (!authUser) return;
         try {
           console.log('[ProfileScreen] Starting fetchAdditionalData');
-          const [coursesSettled, nccSettled, profileSettled] = await Promise.allSettled([
+          const [coursesSettled, nccSettled, profileSettled, bookingsSettled, workshopsSettled] = await Promise.allSettled([
             api.get('/courses/my/courses', { timeout: 6000 }).catch(() => ({ data: [] })),
             api.get('/ncc', { timeout: 6000 }).catch(() => ({ data: null })),
-            api.get('/profile', { timeout: 6000 })
+            api.get('/profile', { timeout: 6000 }),
+            api.get('/mentors/my-bookings', { timeout: 6000 }).catch(() => ({ data: { bookings: [] } })),
+            api.get('/workshops/my-workshops', { timeout: 6000 }).catch(() => ({ data: { workshops: [] } }))
           ]);
 
           console.log('[ProfileScreen] API calls settled:', {
             courses: coursesSettled.status,
             ncc: nccSettled.status,
-            profile: profileSettled.status
+            profile: profileSettled.status,
+            bookings: bookingsSettled.status,
+            workshops: workshopsSettled.status
           });
 
           if (coursesSettled.status === 'fulfilled') {
@@ -142,10 +164,25 @@ const ProfileScreen = ({ navigation }) => {
             setNccStatus(null);
           }
 
+          if (bookingsSettled.status === 'fulfilled') {
+            const bookings = bookingsSettled.value?.data?.bookings || [];
+            setMentorshipSessions(Array.isArray(bookings) ? bookings.length : 0);
+          } else {
+            setMentorshipSessions(0);
+          }
+
+          if (workshopsSettled.status === 'fulfilled') {
+            const workshops = workshopsSettled.value?.data?.workshops || [];
+            setWorkshopsCount(Array.isArray(workshops) ? workshops.length : 0);
+          } else {
+            setWorkshopsCount(0);
+          }
+
           if (profileSettled.status === 'fulfilled') {
             console.log('[ProfileScreen] Profile API success:', profileSettled.value?.data);
             const profileData = profileSettled.value?.data?.profile || authUser;
             setUser(profileData);
+            setProfileIncomplete(computeProfileIncomplete(profileData));
             // Update auth context if profile data changed
             if (profileData && JSON.stringify(profileData) !== JSON.stringify(authUser)) {
               updateUser(profileData);
@@ -155,10 +192,12 @@ const ProfileScreen = ({ navigation }) => {
             // Don't set user to null on API failure - keep the authUser if available
             // This prevents showing login prompt when user is actually authenticated
             console.log('[ProfileScreen] Keeping existing user data despite API failure');
+            setProfileIncomplete(computeProfileIncomplete(authUser));
           }
         } catch (error) {
           console.error('[ProfileScreen] Profile error:', error);
           setUser(authUser || null);
+          setProfileIncomplete(computeProfileIncomplete(authUser));
         }
       };
 
@@ -203,25 +242,37 @@ const ProfileScreen = ({ navigation }) => {
       {/* Profile Header with primary color gradient */}
       <LinearGradient colors={['#9333EA', '#7C3AED', '#4F46E5']} style={styles.profileHeader}>
         <View style={styles.headerRow}>
-           <TouchableOpacity onPress={() => navigation.navigate('Main')} style={styles.backButton}>
-             <SvgXml xml={chevronLeftSvg} width={20} height={20} color="#FFFFFF" />
-           </TouchableOpacity>
-           <Text style={styles.headerTitle}>Profile</Text>
-           <TouchableOpacity onPress={() => navigation.navigate('ProfileEdit')} style={styles.editButton}>
-             <SvgXml xml={editSvg} width={16} height={16} color="#FFFFFF" />
-             <Text style={styles.editButtonText}>Edit</Text>
-           </TouchableOpacity>
-        </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Main')} style={styles.backButton}>
+              <SvgXml xml={chevronLeftSvg} width={20} height={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Profile</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('ProfileEdit')} style={styles.editButton}>
+              <SvgXml xml={editSvg} width={16} height={16} color="#FFFFFF" />
+              <Text style={styles.editButtonText}>Edit</Text>
+            </TouchableOpacity>
+         </View>
+         {/* Profile Incomplete Banner */}
+         {profileIncomplete && (
+           <View style={styles.profileIncompleteBanner}>
+             <Text style={styles.bannerTitle}>⚠️ Complete your professional information to unlock all features</Text>
+           </View>
+         )}
          <View style={styles.contactCard}>
            <View style={styles.profileCardContent}>
              <View style={styles.avatarContainer}>
-               <Image
-                 source={{ uri: 'https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBudXJzZSUyMGhlYWx0aGNhcmV8ZW58MXx8fHwxNzYwMzQ1MzQ1fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral' }}
-                 style={styles.avatarImage}
-                 onError={() => {
-                   // Fallback to initial
-                 }}
-               />
+               {user?.profilePicture ? (
+                 <Image
+                   source={{ uri: user.profilePicture }}
+                   style={styles.avatarImage}
+                   onError={() => {
+                     // Fallback to icon
+                   }}
+                 />
+               ) : (
+                 <View style={styles.avatarPlaceholder}>
+                   <SvgXml xml={userSvg} width={32} height={32} color="#FFFFFF" />
+                 </View>
+               )}
                <TouchableOpacity style={styles.avatarEditButton}>
                  <SvgXml xml={editSvg} width={12} height={12} color="#FFFFFF" />
                </TouchableOpacity>
@@ -233,14 +284,25 @@ const ProfileScreen = ({ navigation }) => {
            </View>
            <View style={styles.separator} />
            <View style={styles.contactDetails}>
-             <View style={styles.contactRow}><SvgXml xml={mailSvg} width={16} height={16} color="#6B7280" style={styles.contactIconSvg} /><Text style={styles.contactText}>{user?.email || '—'}</Text></View>
-             <View style={styles.contactRow}><SvgXml xml={phoneSvg} width={16} height={16} color="#6B7280" style={styles.contactIconSvg} /><Text style={styles.contactText}>{user?.phoneNumber || '—'}</Text></View>
-             <View style={styles.contactRow}><SvgXml xml={mapPinSvg} width={16} height={16} color="#6B7280" style={styles.contactIconSvg} /><Text style={styles.contactText}>{user?.location || [user?.city, user?.state].filter(Boolean).join(', ') || '—'}</Text></View>
-                </View>
+             <View style={styles.contactRow}>
+               <SvgXml xml={mailSvg} width={20} height={20} color="#6B7280" style={{ marginRight: 8 }} />
+               <Text style={styles.contactText}>{user?.email || '—'}</Text>
+             </View>
+             <View style={styles.contactRow}>
+               <SvgXml xml={phoneSvg} width={20} height={20} color="#6B7280" style={{ marginRight: 8 }} />
+               <Text style={styles.contactText}>{user?.phoneNumber || '—'}</Text>
+             </View>
+             <View style={styles.contactRow}>
+               <SvgXml xml={mapPinSvg} width={20} height={20} color="#6B7280" style={{ marginRight: 8 }} />
+               <Text style={styles.contactText}>{user?.location || [user?.city, user?.state].filter(Boolean).join(', ') || '—'}</Text>
+             </View>
+           </View>
+           {/* Only show professional details if profile is complete */}
+          
          </View>
       </LinearGradient>
 
-    
+
 
       {/* Stats - Modern Cards with Gradients */}
       <View style={styles.statsContainer}>
@@ -249,14 +311,14 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={styles.statLabel}>Courses</Text>
         </LinearGradient>
         <LinearGradient colors={['#FCE7F3', '#FBCFE8']} style={[styles.statTile, styles.sessionsCard]}>
-          <Text style={[styles.statNumber, { color: '#DB2777' }]}>{user?.mentorshipSessions || 0}</Text>
+          <Text style={[styles.statNumber, { color: '#DB2777' }]}>{mentorshipSessions}</Text>
           <Text style={styles.statLabel}>Sessions</Text>
         </LinearGradient>
         <LinearGradient colors={['#FFF7ED', '#FED7AA']} style={[styles.statTile, styles.workshopsCard]}>
-          <Text style={[styles.statNumber, { color: '#EA580C' }]}>{user?.workshopsCount || 0}</Text>
+          <Text style={[styles.statNumber, { color: '#EA580C' }]}>{workshopsCount}</Text>
           <Text style={styles.statLabel}>Workshops</Text>
         </LinearGradient>
-      
+
       </View>
 
       {/* Divider */}
@@ -365,6 +427,14 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
+  },
+  avatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   userName: {
     color: '#000000',
@@ -635,6 +705,9 @@ const styles = StyleSheet.create({
   contactDetails: {
     // No specific styles, uses existing contactRow
   },
+  professionalDetails: {
+    // No specific styles, uses existing contactRow
+  },
   iconContainer: {
     // Default, no background
   },
@@ -690,18 +763,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#1E293B',
-    marginBottom: 2,
-  },
-  bannerSubtitle: {
-    fontSize: 12,
-    color: '#64748B',
+    flex: 1,
   },
   bannerButton: {
     backgroundColor: '#F97316',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    marginLeft: 8,
   },
   bannerButtonText: {
     color: '#fff',

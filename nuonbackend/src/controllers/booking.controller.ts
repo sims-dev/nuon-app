@@ -1,42 +1,89 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
-import { BookingService } from '../services/booking.service';
+import { Controller, Post, Get, Body, Param, Req, UseGuards } from '@nestjs/common';
+import { PrismaService } from '../services/prisma.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
-@Controller('booking')
+@Controller('mentor')
 export class BookingController {
-    constructor(private readonly bookingService: BookingService) {}
+  constructor(private prisma: PrismaService) {}
 
-    @Post()
-    @UseGuards(JwtAuthGuard)
-    async createBooking(@Body() bookingData: any): Promise<any> {
-        // TODO: Get user from JWT
-        const userId = BigInt(1); // Placeholder
-        return this.bookingService.createBooking(bookingData, userId);
-    }
+  @Post('book-session')
+  @UseGuards(JwtAuthGuard)
+  async bookSession(@Body() body: { availabilityId: number }, @Req() req) {
+    try {
+      const { availabilityId } = body;
+      const nurseId = req.user.id;
 
-    @Get()
-    @UseGuards(JwtAuthGuard)
-    async getBookings(): Promise<any> {
-        // TODO: Get user from JWT
-        const userId = BigInt(1); // Placeholder
-        return this.bookingService.getBookings(userId);
-    }
+      const availability = await this.prisma.mentorAvailability.findUnique({
+        where: { id: BigInt(availabilityId) },
+        include: { mentor: true }
+      });
 
-    @Put(':id/status')
-    @UseGuards(JwtAuthGuard)
-    async updateBookingStatus(
-        @Param('id') id: string,
-        @Body() body: { status: string }
-    ): Promise<any> {
-        return this.bookingService.updateBookingStatus(BigInt(id), body.status);
-    }
+      if (!availability || availability.currentBookings >= (availability.maxBookings || 1)) {
+        return { success: false, message: 'No slots available' };
+      }
 
-    @Post(':id/zoom')
-    @UseGuards(JwtAuthGuard)
-    async createZoomSession(
-        @Param('id') id: string,
-        @Body() body: { zoomLink: string }
-    ): Promise<any> {
-        return this.bookingService.createZoomSession(BigInt(id), body.zoomLink);
+      const booking = await this.prisma.booking.create({
+        data: {
+          nurse: { connect: { id: nurseId } },
+          mentor: { connect: { id: availability.mentorId } },
+          mentorAvailability: { connect: { id: BigInt(availabilityId) } },
+          dateTime: availability.startDateTime
+        }
+      });
+
+      await this.prisma.mentorAvailability.update({
+        where: { id: BigInt(availabilityId) },
+        data: { currentBookings: { increment: 1 } }
+      });
+
+      // Emit socket event to mentor
+      const io = (global as any).io;
+      io.to(`mentor_${availability.mentorId}`).emit('new_booking', {
+        booking,
+        user: req.user
+      });
+
+      return { success: true, booking };
+    } catch (error) {
+      console.error('Error booking session:', error);
+      return { success: false, message: 'Failed to book session' };
     }
+  }
+
+  @Get('bookings')
+  @UseGuards(JwtAuthGuard)
+  async getMyBookings(@Req() req) {
+    try {
+      const userId = req.user.id;
+      const bookings = await this.prisma.booking.findMany({
+        where: { nurseId: userId },
+        include: {
+          mentorAvailability: {
+            include: {
+              mentor: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      return bookings;
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+      throw new Error('Failed to fetch bookings');
+    }
+  }
+
+  @Get('availability/:mentorId')
+  async fetchMentorAvailability(@Param('mentorId') mentorId: string) {
+    try {
+      const availabilities = await this.prisma.mentorAvailability.findMany({
+        where: { mentorId: parseInt(mentorId), isActive: true },
+        orderBy: { startDateTime: 'asc' }
+      });
+      return { slots: availabilities };
+    } catch (error) {
+      console.error('Error fetching availability:', error);
+      throw new Error('Failed to fetch availability');
+    }
+  }
 }

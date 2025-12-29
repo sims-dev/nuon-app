@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { getSocket } from '../lib/socket';
+import { notifyUser, notifyAdmin } from '../lib/socket';
 
 @Injectable()
 export class CourseService {
@@ -169,14 +170,11 @@ export class CourseService {
                     userId,
                     itemType: 'course',
                     status: 'completed'
-                },
-                include: {
-                    user: true
                 }
             });
 
             // Get course IDs from purchases
-            const courseIds = purchases.map(p => p.itemId);
+            const courseIds = purchases.map(p => p.itemId).filter(id => id !== null);
 
             const courses = await this.prisma.course.findMany({
                 where: {
@@ -185,11 +183,49 @@ export class CourseService {
                 include: {
                     instructor: {
                         select: { id: true, name: true, email: true }
+                    },
+                    lessonsList: {
+                        orderBy: { order: 'asc' }
                     }
                 }
             });
 
-            const formatted = courses.map(c => ({
+            // Calculate progress for each course
+            const coursesWithProgress = await Promise.all(
+                courses.map(async (c) => {
+                    const lessonIds = c.lessonsList.map(l => l.id);
+
+                    if (lessonIds.length === 0) {
+                        return { ...c, progress: 0 };
+                    }
+
+                    const userProgressRecords = await this.prisma.userProgress.findMany({
+                        where: {
+                            userId,
+                            lessonId: { in: lessonIds }
+                        }
+                    });
+
+                    let totalProgress = 0;
+                    let completedLessons = 0;
+
+                    c.lessonsList.forEach(lesson => {
+                        const progressRecord = userProgressRecords.find(p => p.lessonId === lesson.id);
+                        if (progressRecord) {
+                            totalProgress += progressRecord.progress;
+                            if (progressRecord.completed) {
+                                completedLessons++;
+                            }
+                        }
+                    });
+
+                    const progress = lessonIds.length > 0 ? Math.round(totalProgress / lessonIds.length) : 0;
+
+                    return { ...c, progress, completedLessons, totalLessons: lessonIds.length };
+                })
+            );
+
+            const formatted = coursesWithProgress.map(c => ({
                 _id: c.id.toString(),
                 id: c.id.toString(),
                 title: c.title,
@@ -203,7 +239,10 @@ export class CourseService {
                 duration: c.duration,
                 certificate: c.certificate,
                 date: c.createdAt,
-                lessons: (c as any).lessons || [],
+                lessons: (c as any).lessonsList || [],
+                progress: (c as any).progress || 0,
+                completedLessons: (c as any).completedLessons || 0,
+                totalLessons: (c as any).totalLessons || 0,
                 videoUrl: c.videoUrl,
                 videoTitle: c.videoTitle,
                 videoDuration: c.videoDuration,
@@ -276,6 +315,27 @@ export class CourseService {
                     enrollmentCount: { increment: 1 }
                 }
             });
+
+            // Create initial progress records for all lessons
+            const courseWithLessons = await this.prisma.course.findUnique({
+                where: { id: courseId },
+                include: { lessonsList: true }
+            });
+
+            if (courseWithLessons?.lessonsList && courseWithLessons.lessonsList.length > 0) {
+                const progressRecords = courseWithLessons.lessonsList.map(lesson => ({
+                    userId,
+                    courseId,
+                    lessonId: lesson.id,
+                    progress: 0,
+                    completed: false
+                }));
+
+                await this.prisma.userProgress.createMany({
+                    data: progressRecords,
+                    skipDuplicates: true
+                });
+            }
 
             // Emit socket event for real-time updates
             const io = getSocket();
@@ -366,6 +426,137 @@ export class CourseService {
             return {
                 success: true,
                 message: 'Course deleted successfully'
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async getCoursesWithEnrollmentStatus(userId: bigint): Promise<any> {
+        try {
+            const rows = await this.prisma.$queryRaw`
+                SELECT c.*,
+                IF(e.id IS NULL, 0, 1) AS isEnrolled
+                FROM courses c
+                LEFT JOIN enrollments e
+                  ON c.id = e.course_id AND e.user_id = ${userId}
+            ` as any[];
+
+            return {
+                success: true,
+                courses: rows
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async processDemoPayment(userId: number, courseId: number): Promise<any> {
+        try {
+            // Check already enrolled
+            const existingEnrollment = await this.prisma.enrollment.findFirst({
+                where: {
+                    userId: BigInt(userId),
+                    courseId: BigInt(courseId)
+                }
+            });
+
+            if (existingEnrollment) {
+                return {
+                    success: false,
+                    message: 'Already enrolled'
+                };
+            }
+
+            // Get course price
+            const course = await this.prisma.course.findUnique({
+                where: { id: BigInt(courseId) }
+            });
+
+            if (!course) {
+                throw new Error('Course not found');
+            }
+
+            // Save payment
+            await this.prisma.payment.create({
+                data: {
+                    userId: BigInt(userId),
+                    amount: course.price,
+                    paymentId: `demo_${Date.now()}`,
+                    status: 'SUCCESS'
+                }
+            });
+
+            // Enroll user
+            await this.prisma.enrollment.create({
+                data: {
+                    userId: BigInt(userId),
+                    courseId: BigInt(courseId)
+                }
+            });
+
+            // User notification
+            await this.prisma.notification.create({
+                data: {
+                    userId: BigInt(userId),
+                    title: 'Enrollment Successful',
+                    message: 'Course added to My Learning',
+                    type: 'enrollment'
+                }
+            });
+
+            // Admin notification
+            await this.prisma.notification.create({
+                data: {
+                    userId: BigInt(1), // Assuming admin user ID is 1
+                    title: 'New Enrollment',
+                    message: `User ${userId} enrolled in course ${courseId}`,
+                    type: 'admin'
+                }
+            });
+
+            // Real-time push
+            notifyUser(userId, {
+                title: 'Payment Successful',
+                message: 'Course added to My Learning'
+            });
+
+            notifyAdmin({
+                title: 'New Enrollment',
+                message: `User ${userId} enrolled`
+            });
+
+            return {
+                success: true
+            };
+        } catch (error) {
+            throw new Error((error as Error).message);
+        }
+    }
+
+    async getMyLearning(userId: bigint): Promise<any> {
+        try {
+            const courses = await this.prisma.enrollment.findMany({
+                where: {
+                    userId
+                },
+                include: {
+                    course: true
+                }
+            });
+
+            const formattedCourses = courses.map(enrollment => ({
+                id: enrollment.course.id.toString(),
+                title: enrollment.course.title,
+                description: enrollment.course.description,
+                price: enrollment.course.price,
+                thumbnail: enrollment.course.thumbnail,
+                enrolledAt: enrollment.enrolledAt
+            }));
+
+            return {
+                success: true,
+                courses: formattedCourses
             };
         } catch (error) {
             throw new Error((error as Error).message);

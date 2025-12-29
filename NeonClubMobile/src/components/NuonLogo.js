@@ -7,9 +7,10 @@ const logoImage = require('../assets/logo.png');
  * Full NUON Logo with optional tagline
  * Usage: <NuonLogo showTagline={true} variant="white" />
  */
-export const NuonLogo = ({ 
+export const NuonLogo = ({
   variant = 'default',
   showTagline = false,
+  taglineColor,
   style = {}
 }) => {
   return (
@@ -25,7 +26,7 @@ export const NuonLogo = ({
       {showTagline && (
         <Text style={[
           styles.tagline,
-          variant === 'white' && styles.whiteText
+          taglineColor ? { color: taglineColor } : (variant === 'white' && styles.whiteText)
         ]}>
           Nurses United, Opportunities Nourished
         </Text>
@@ -94,7 +95,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     marginTop: 8,
-    fontSize: 12,
+    fontSize: 10,
     color: '#6B7280',
     fontWeight: '500',
     textAlign: 'center',

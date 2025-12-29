@@ -12,6 +12,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
 import socketService from '../services/socket';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mentorAPI } from '../api/mentorAPI';
 
 // SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -88,25 +89,8 @@ const RescheduleSessionScreen = ({ route, navigation }) => {
       const hour24 = period === 'PM' && hours !== '12' ? parseInt(hours) + 12 : period === 'AM' && hours === '12' ? 0 : parseInt(hours);
       const newDateTime = new Date(`${selectedDate}T${hour24.toString().padStart(2, '0')}:${minutes}:00`);
 
-      // Find available slot for the new date/time (this would need to be implemented properly)
-      // For now, we'll assume we have the slot ID from session data
-      const response = await fetch(`http://192.168.1.100:5000/api/booking/reschedule/${session.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          newDateTime: newDateTime.toISOString(),
-          // availabilityId would need to be determined based on selected date/time
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to reschedule session');
-      }
-
-      const result = await response.json();
+      // Use mentorAPI to reschedule
+      const result = await mentorAPI.rescheduleBooking(session.id, newDateTime.toISOString(), token);
 
       // Emit real-time notification
       socketService.emit('booking_rescheduled', {
@@ -119,13 +103,13 @@ const RescheduleSessionScreen = ({ route, navigation }) => {
       setShowSuccessModal(true);
     } catch (error) {
       console.error('Reschedule error:', error);
-      Alert.alert('Error', 'Failed to reschedule session. Please try again.');
+      Alert.alert('Error', error.message || 'Failed to reschedule session. Please try again.');
     }
   };
 
   const handleSuccessClose = () => {
     setShowSuccessModal(false);
-    navigation.navigate('Mentorship', { activeTab: 'upcoming' });
+    navigation.navigate('MySessions');
   };
 
   return (

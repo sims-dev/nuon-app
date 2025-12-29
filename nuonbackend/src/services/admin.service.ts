@@ -215,6 +215,68 @@ export class AdminService {
                 password
             } = data;
 
+            // Validation for required fields
+            if (!name || name.trim() === '') {
+                throw new Error('Name is required');
+            }
+            if (!email || email.trim() === '') {
+                throw new Error('Email is required');
+            }
+            // Basic email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                throw new Error('Invalid email format');
+            }
+            if (!role || role.trim() === '') {
+                throw new Error('Role is required');
+            }
+            if (!data.specialization || data.specialization.trim() === '') {
+                throw new Error('Specialization is required');
+            }
+
+            // Check if phone number already exists
+            if (phoneNumber && phoneNumber.trim() !== '') {
+                const existingUser = await this.prisma.user.findFirst({
+                    where: { phoneNumber: phoneNumber.trim() }
+                });
+                if (existingUser) {
+                    throw new Error('Phone number already exists');
+                }
+            }
+
+            // Additional validation for mentors
+            if (role === 'mentor') {
+                if (!data.qualification || data.qualification.trim() === '') {
+                    throw new Error('Qualification is required for mentors');
+                }
+                if (!data.department || data.department.trim() === '') {
+                    throw new Error('Department is required for mentors');
+                }
+                if (!data.hospital || data.hospital.trim() === '') {
+                    throw new Error('Hospital/Institution is required for mentors');
+                }
+                if (hourlyRate === undefined || hourlyRate === null || hourlyRate === '') {
+                    throw new Error('Hourly rate is required for mentors');
+                }
+            }
+
+            // Validation for numeric fields
+            let parsedHourlyRate = 0;
+            if (hourlyRate !== undefined && hourlyRate !== null && hourlyRate !== '') {
+                parsedHourlyRate = parseFloat(hourlyRate.toString());
+                if (isNaN(parsedHourlyRate) || parsedHourlyRate < 0) {
+                    throw new Error('Hourly rate must be a valid non-negative number');
+                }
+            }
+
+            let parsedExperience = 0;
+            if (experience !== undefined && experience !== null && experience !== '') {
+                parsedExperience = parseInt(experience.toString(), 10);
+                if (isNaN(parsedExperience) || parsedExperience < 0) {
+                    throw new Error('Experience must be a valid non-negative integer');
+                }
+            }
+
             let rawPassword = password;
             if (!rawPassword) {
                 rawPassword = Math.random().toString(36).slice(-8);
@@ -231,8 +293,8 @@ export class AdminService {
             }
 
             const userData: any = {
-                name,
-                email: email ? email.toLowerCase() : null,
+                name: name.trim(),
+                email: email.toLowerCase().trim(),
                 userRole: { connect: { id: roleRecord.id } },
                 password: hashedPassword,
                 phoneNumber,
@@ -240,10 +302,10 @@ export class AdminService {
                 department,
                 hospital,
                 bio,
-                hourlyRate: hourlyRate ? parseFloat(hourlyRate) : 0,
+                hourlyRate: parsedHourlyRate,
                 availability: availability || 'available',
                 specialization,
-                experience: experience ? parseInt(experience.toString(), 10) : 0,
+                experience: parsedExperience,
                 location,
                 isProfileComplete: true
             };
@@ -300,6 +362,213 @@ export class AdminService {
 
     async deleteUser(userId: bigint): Promise<any> {
         try {
+            // Delete related records in order to avoid foreign key constraints
+            // Order matters - delete dependent records first
+
+            // Delete engage-related records
+            await this.prisma.engageUserProgress.deleteMany({
+                where: { userId }
+            });
+            await this.prisma.engageActivityReview.deleteMany({
+                where: { userId }
+            });
+            await this.prisma.engageActivityRegistration.deleteMany({
+                where: { userId }
+            });
+
+            // Delete assessment attempts
+            await this.prisma.assessmentAttempt.deleteMany({
+                where: { userId }
+            });
+
+            // Delete user progress
+            await this.prisma.userProgress.deleteMany({
+                where: { userId }
+            });
+
+            // Delete favorites
+            await this.prisma.favorite.deleteMany({
+                where: { userId }
+            });
+
+            // Delete notifications
+            await this.prisma.notification.deleteMany({
+                where: { userId }
+            });
+
+            // Delete payments
+            await this.prisma.payment.deleteMany({
+                where: { userId }
+            });
+
+            // Delete purchases
+            await this.prisma.purchase.deleteMany({
+                where: { userId }
+            });
+
+            // Delete app sessions
+            await this.prisma.appSession.deleteMany({
+                where: { userId }
+            });
+
+            // Delete NCC status
+            await this.prisma.nCCStatus.deleteMany({
+                where: { userId }
+            });
+
+            // Delete mentor application
+            await this.prisma.mentorApplication.deleteMany({
+                where: { mentorId: userId }
+            });
+
+            // Delete admin sessions
+            await this.prisma.adminSession.deleteMany({
+                where: { adminId: userId }
+            });
+
+            // Delete OTP records
+            await this.prisma.otp.deleteMany({
+                where: { userId }
+            });
+
+            // Delete zoom sessions (as user or mentor)
+            await this.prisma.zoomSession.deleteMany({
+                where: {
+                    OR: [
+                        { userId },
+                        { mentorId: userId }
+                    ]
+                }
+            });
+
+            // Delete mentor earnings
+            await this.prisma.mentorEarning.deleteMany({
+                where: { mentorId: userId }
+            });
+
+            // Delete feedback (as nurse and mentor)
+            await this.prisma.feedback.deleteMany({
+                where: {
+                    OR: [
+                        { nurseId: userId },
+                        { mentorId: userId }
+                    ]
+                }
+            });
+
+            // Delete bookings (as nurse and mentor)
+            await this.prisma.booking.deleteMany({
+                where: {
+                    OR: [
+                        { nurseId: userId },
+                        { mentorId: userId }
+                    ]
+                }
+            });
+
+            // Delete mentor availability
+            await this.prisma.mentorAvailability.deleteMany({
+                where: { mentorId: userId }
+            });
+
+            // Delete catalog items created by this user
+            await this.prisma.catalogItem.deleteMany({
+                where: {
+                    OR: [
+                        { creatorId: userId },
+                        { createdBy: userId }
+                    ]
+                }
+            });
+
+            // Delete news articles authored by this user
+            await this.prisma.news.deleteMany({
+                where: { authorId: userId }
+            });
+
+            // Delete engage activities created/instructed by this user
+            await this.prisma.engageActivity.deleteMany({
+                where: {
+                    OR: [
+                        { instructorId: userId },
+                        { creatorId: userId }
+                    ]
+                }
+            });
+
+            // Delete workshop sessions for workshops created/instructed by this user
+            const workshopIds = await this.prisma.workshop.findMany({
+                where: {
+                    OR: [
+                        { createdBy: userId },
+                        { instructorId: userId }
+                    ]
+                },
+                select: { id: true }
+            });
+            const workshopIdList = workshopIds.map(w => w.id);
+            if (workshopIdList.length > 0) {
+                await this.prisma.workshopSession.deleteMany({
+                    where: { workshopId: { in: workshopIdList } }
+                });
+            }
+
+            // Delete workshops created/instructed by this user
+            await this.prisma.workshop.deleteMany({
+                where: {
+                    OR: [
+                        { createdBy: userId },
+                        { instructorId: userId }
+                    ]
+                }
+            });
+
+            // Delete conferences instructed by this user
+            await this.prisma.conference.deleteMany({
+                where: { instructorId: userId }
+            });
+
+            // Delete events instructed by this user
+            await this.prisma.event.deleteMany({
+                where: { instructorId: userId }
+            });
+
+            // Delete lessons and assessments for courses instructed by this user
+            const courseIds = await this.prisma.course.findMany({
+                where: { instructorId: userId },
+                select: { id: true }
+            });
+            const courseIdList = courseIds.map(c => c.id);
+            if (courseIdList.length > 0) {
+                await this.prisma.assessment.deleteMany({
+                    where: { courseId: { in: courseIdList } }
+                });
+                await this.prisma.lesson.deleteMany({
+                    where: { courseId: { in: courseIdList } }
+                });
+            }
+
+            // Delete courses instructed by this user
+            await this.prisma.course.deleteMany({
+                where: { instructorId: userId }
+            });
+
+            // Delete assessments created by this user
+            await this.prisma.assessment.deleteMany({
+                where: { createdBy: userId }
+            });
+
+            // Delete system settings updated by this user
+            await this.prisma.systemSetting.deleteMany({
+                where: { updatedBy: userId }
+            });
+
+            // Delete admin logs
+            await this.prisma.adminLog.deleteMany({
+                where: { adminId: userId }
+            });
+
+            // Finally, delete the user
             await this.prisma.user.delete({
                 where: { id: userId }
             });
@@ -554,9 +823,9 @@ export class AdminService {
             }
 
             // Validate category
-            const validCategories = ['wellness', 'fitness', 'event'];
+            const validCategories = ['course', 'event', 'workshop', 'wellness', 'fitness', 'conference'];
             if (!validCategories.includes(data.category)) {
-                throw new Error('Invalid category. Must be one of: wellness, fitness, event');
+                throw new Error('Invalid category. Must be one of: course, event, workshop, wellness, fitness, conference');
             }
 
             // Parse and validate numeric fields from strings
@@ -570,9 +839,9 @@ export class AdminService {
                 throw new Error('Points must be a valid non-negative integer');
             }
 
-            const capacity = data.capacity ? parseInt(data.capacity, 10) : 0;
-            if (isNaN(capacity) || capacity < 0) {
-                throw new Error('Capacity must be a valid non-negative integer');
+            const capacity = data.capacity ? parseInt(data.capacity, 10) : 100;
+            if (isNaN(capacity) || capacity < 1) {
+                throw new Error('Capacity must be a valid positive integer');
             }
 
             const videoDuration = data.videoDuration ? parseInt(data.videoDuration, 10) : 0;
@@ -665,9 +934,9 @@ export class AdminService {
                 throw new Error('Description cannot be empty');
             }
             if (data.category !== undefined) {
-                const validCategories = ['wellness', 'fitness', 'event'];
+                const validCategories = ['course', 'event', 'workshop', 'wellness', 'fitness', 'conference'];
                 if (!validCategories.includes(data.category)) {
-                    throw new Error('Invalid category. Must be one of: wellness, fitness, event');
+                    throw new Error('Invalid category. Must be one of: course, event, workshop, wellness, fitness, conference');
                 }
             }
             if (data.status !== undefined) {

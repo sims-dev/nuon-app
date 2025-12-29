@@ -4,6 +4,7 @@ import { CourseService } from '../services/course.service';
 import { EventService } from '../services/event.service';
 import { WorkshopService } from '../services/workshop.service';
 import { AssessmentService } from '../services/assessment.service';
+import { PrismaService } from '../services/prisma.service';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -13,6 +14,7 @@ export class DashboardController {
         private readonly eventService: EventService,
         private readonly workshopService: WorkshopService,
         private readonly assessmentService: AssessmentService,
+        private readonly prisma: PrismaService,
     ) {}
 
     @Get('news')
@@ -107,6 +109,36 @@ export class DashboardController {
             return {
                 success: false,
                 assessments: []
+            };
+        }
+    }
+
+    @Get('stats')
+    async getDashboardStats(): Promise<any> {
+        try {
+            const [courses, events, workshops, registered, enrolled] = await Promise.all([
+                this.prisma.course.count({ where: { isActive: true } }),
+                this.prisma.event.count({ where: { isActive: true } }),
+                this.prisma.workshop.count({ where: { isActive: true } }),
+                this.prisma.user.count(),
+                this.prisma.userProgress.count()
+            ]);
+            return {
+                success: true,
+                courses,
+                events,
+                workshops,
+                registered,
+                enrolled
+            };
+        } catch (error) {
+            return {
+                success: false,
+                courses: 0,
+                events: 0,
+                workshops: 0,
+                registered: 0,
+                enrolled: 0
             };
         }
     }

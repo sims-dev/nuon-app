@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
-import { eventAPI } from '../services/api';
+import { eventAPI, api } from '../services/api';
 import SuccessModal from '../components/SuccessModal';
 import { IP_ADDRESS } from '../../config/ipConfig';
 
@@ -47,6 +47,7 @@ const EventViewerScreen = ({ route, navigation }) => {
     if (event.price > 0) {
       navigation.navigate('Payment', { item: event, type: 'event', amount: event.price });
     } else {
+      // Free event - register directly
       try {
         setRegistering(true);
         await eventAPI.registerForEvent(event._id, { paymentId: 'free', paymentMethod: 'free' });
@@ -55,6 +56,9 @@ const EventViewerScreen = ({ route, navigation }) => {
         let msg = 'Failed to register for event';
         if (error?.response?.data?.message) {
           msg = error.response.data.message;
+        }
+        if (error?.response?.status === 409) {
+          msg = 'You are already registered for this event.';
         }
         Alert.alert('Error', msg);
       } finally {

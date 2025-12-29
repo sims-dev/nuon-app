@@ -1,42 +1,51 @@
-import { Controller, Post, Get, Put, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
-import { PaymentService } from '../services/payment.service';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { Controller, Post, Body } from '@nestjs/common';
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
+import { PrismaService } from '../services/prisma.service';
 
-@Controller('payment')
+@Controller('payments')
 export class PaymentController {
-    constructor(private readonly paymentService: PaymentService) {}
+  constructor(private prisma: PrismaService) {}
 
-    @Post('initiate')
-    @UseGuards(JwtAuthGuard)
-    async initiatePayment(@Body() body: { itemId: string; amount: number; gateway: string }, @Req() req: any): Promise<any> {
-        const userId = BigInt(req.user.id);
-        return this.paymentService.initiatePayment(body, userId);
+  @Post('create-order')
+  async createOrder(@Body() body: { amount: number, currency: string, itemType: string, itemId: string }) {
+    const { amount, currency, itemType, itemId } = body;
+    const razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET
+    });
+    const options = {
+      amount,
+      currency,
+      receipt: `receipt_${itemId}`
+    };
+    try {
+      const order = await razorpay.orders.create(options);
+      return order;
+    } catch (error) {
+      console.error('Error creating order:', error);
+      throw new Error('Failed to create order');
     }
+  }
 
-    @Post('mentorship')
-    @UseGuards(JwtAuthGuard)
-    async initiateMentorshipPayment(@Body() body: {
-        mentorId: string;
-        amount: number;
-        originalAmount: number;
-        coupon?: string;
-        paymentMethod: string;
-        dateTime: string;
-    }, @Req() req: any): Promise<any> {
-        const userId = BigInt(req.user.id);
-        return this.paymentService.initiateMentorshipPayment(body, userId);
+  @Post('verify')
+  async verifyPayment(@Body() body: { razorpay_order_id: string, razorpay_payment_id: string, razorpay_signature: string, itemType: string, itemId: string }) {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, itemType, itemId } = body;
+    const sign = razorpay_order_id + '|' + razorpay_payment_id;
+    const expectedSign = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(sign.toString())
+      .digest('hex');
+    if (razorpay_signature === expectedSign) {
+      // Update booking status
+      if (itemType === 'mentorship') {
+        await this.prisma.booking.update({
+          where: { id: parseInt(itemId) },
+          data: { status: 'confirmed' }
+        });
+      }
+      return { success: true };
+    } else {
+      return { success: false, message: 'Payment verification failed' };
     }
-
-    @Get('history')
-    @UseGuards(JwtAuthGuard)
-    async getPaymentHistory(@Query('userId') userId: string, @Req() req: any): Promise<any> {
-        const targetUserId = userId ? BigInt(userId) : BigInt(req.user.id);
-        return this.paymentService.getPaymentHistory(targetUserId);
-    }
-
-    @Put(':id/status')
-    @UseGuards(JwtAuthGuard)
-    async updatePaymentStatus(@Param('id') id: string, @Body() body: { status: string }): Promise<any> {
-        return this.paymentService.updatePaymentStatus(BigInt(id), body.status);
-    }
+  }
 }

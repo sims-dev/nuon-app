@@ -22,7 +22,7 @@ async function bootstrap(): Promise<void> {
     };
 
     const app = await NestFactory.create<NestExpressApplication>(AppModule, { cors: false });
-    app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
     app.use(cookieParser());
 
     // Configure CORS to allow frontend origins
@@ -68,8 +68,12 @@ async function bootstrap(): Promise<void> {
         setHeaders: (res, path) => {
             // Cache static assets for 1 hour
             res.set('Cache-Control', 'public, max-age=3600');
-            // Enable gzip compression for better performance
+            // Set content-type for video files
             if (path.endsWith('.mp4') || path.endsWith('.webm') || path.endsWith('.ogg')) {
+                res.set('Accept-Ranges', 'bytes');
+                res.set('Content-Type', 'video/mp4');
+            } else if (!path.includes('.') && path.includes('uploads')) {
+                // Files without extension in uploads are likely videos
                 res.set('Accept-Ranges', 'bytes');
                 res.set('Content-Type', 'video/mp4');
             }

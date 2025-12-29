@@ -25,6 +25,19 @@ export class AuthController {
         }
     }
 
+    // Phone login
+    @Post('auth/login-phone')
+    async loginPhone(@Body() body: { phoneNumber: string }): Promise<Record<string, unknown>> {
+        try {
+            return await this.authService.loginPhone(body.phoneNumber);
+        } catch (error) {
+            throw new HttpException(
+                { success: false, message: (error as Error).message },
+                HttpStatus.UNAUTHORIZED
+            );
+        }
+    }
+
     // OTP login (keeping for compatibility)
     @Post('auth/login-otp')
     async loginOtp(@Body() loginDto: UserDto): Promise<Record<string, unknown>> {
@@ -51,12 +64,39 @@ export class AuthController {
         }
     }
 
+    // Register (legacy route for mobile app)
+    @Post('register')
+    async registerLegacy(@Body() body: {
+        name: string;
+        email?: string;
+        password?: string;
+        phoneNumber?: string;
+        specialization?: string;
+        experience?: number;
+        organization?: string;
+        city?: string;
+        state?: string;
+        location?: string;
+        role?: string;
+        isProfileComplete?: boolean;
+        profileIncomplete?: boolean;
+    }): Promise<Record<string, unknown>> {
+        try {
+            return await this.authService.register(body);
+        } catch (error) {
+            throw new HttpException(
+                { success: false, message: (error as Error).message },
+                HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
     // Register
     @Post('auth/register')
     async register(@Body() body: {
         name: string;
         email?: string;
-        password: string;
+        password?: string;
         phoneNumber: string;
         specialization?: string;
         experience?: number;
@@ -65,6 +105,8 @@ export class AuthController {
         state?: string;
         location?: string;
         role?: string;
+        isProfileComplete?: boolean;
+        profileIncomplete?: boolean;
     }): Promise<Record<string, unknown>> {
         try {
             return await this.authService.register(body);
@@ -94,7 +136,13 @@ export class AuthController {
     @UseGuards(JwtAuthGuard)
     async getCurrentProfile(@Req() req: any): Promise<Record<string, unknown>> {
         try {
-            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
+            if (!req.user?.id) {
+                throw new HttpException(
+                    { success: false, message: 'User not authenticated' },
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+            const userId = BigInt(req.user.id);
             return await this.authService.getCurrentProfile(userId);
         } catch (error) {
             throw new HttpException(
@@ -109,7 +157,13 @@ export class AuthController {
     @UseGuards(JwtAuthGuard)
     async getUserMe(@Req() req: any): Promise<Record<string, unknown>> {
         try {
-            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
+            if (!req.user?.id) {
+                throw new HttpException(
+                    { success: false, message: 'User not authenticated' },
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+            const userId = BigInt(req.user.id);
             return await this.authService.getCurrentProfile(userId);
         } catch (error) {
             throw new HttpException({ success: false, message: (error as Error).message }, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -131,9 +185,16 @@ export class AuthController {
         state?: string;
         organization?: string;
         location?: string;
+        isProfileComplete?: boolean;
     }): Promise<Record<string, unknown>> {
         try {
-            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
+            if (!req.user?.id) {
+                throw new HttpException(
+                    { success: false, message: 'User not authenticated' },
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+            const userId = BigInt(req.user.id);
             return await this.authService.updateProfile(userId, body);
         } catch (error) {
             throw new HttpException(
@@ -154,7 +215,13 @@ export class AuthController {
         profilePicture?: string;
     }): Promise<Record<string, unknown>> {
         try {
-            const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
+            if (!req.user?.id) {
+                throw new HttpException(
+                    { success: false, message: 'User not authenticated' },
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+            const userId = BigInt(req.user.id);
             return await this.authService.createOrUpdateProfile(userId, body);
         } catch (error) {
             throw new HttpException(
@@ -187,6 +254,31 @@ export class AuthController {
             success: true,
             settings: body
         };
+    }
+
+    // Update push token for notifications
+    @Put('profile/push-token')
+    @UseGuards(JwtAuthGuard)
+    async updatePushToken(@Req() req: any, @Body() body: { fcmToken: string }): Promise<any> {
+        try {
+            if (!req.user?.id) {
+                throw new HttpException(
+                    { success: false, message: 'User not authenticated' },
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+            const userId = BigInt(req.user.id);
+            await this.authService.updatePushToken(userId, body.fcmToken);
+            return {
+                success: true,
+                message: 'Push token updated successfully'
+            };
+        } catch (error) {
+            throw new HttpException(
+                { success: false, message: (error as Error).message },
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
     }
 
     @Post('create-role')

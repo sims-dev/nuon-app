@@ -28,6 +28,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = ({ user, accessToken, refreshToken }) => {
+    console.log('AuthContext login called with:', { user, accessToken: !!accessToken, refreshToken: !!refreshToken });
     setUser(user);
     setToken(accessToken);
     setIsAuthenticated(true);
@@ -36,6 +37,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
     localStorage.setItem('mentor_user', JSON.stringify(user));
+    console.log('AuthContext login completed, isAuthenticated:', true);
   };
 
   const logout = () => {

@@ -30,8 +30,16 @@ export const handleLogin = async (email, password, navigation) => {
 // Register Function - Add to RegisterScreen
 export const handleRegister = async (userData, navigation) => {
   try {
-  await api.post('/register', userData);
-    navigation.replace('Login');
+    const response = await api.post('/register', userData);
+    const { token, user } = response.data;
+    await AsyncStorage.setItem('token', token);
+    await AsyncStorage.setItem('user', JSON.stringify(user));
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Main' }],
+      })
+    );
   } catch (error) {
     throw new Error(error.response?.data?.message || 'Registration failed');
   }

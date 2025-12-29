@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards, HttpException, HttpStatus, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards, HttpException, HttpStatus, Req, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { MentorService } from '../services/mentor.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { AuthenticatedRequest } from '../middleware/auth';
@@ -201,7 +202,7 @@ export class MentorController {
         } catch (error) {
             throw new HttpException(
                 { message: (error as Error).message },
-                HttpStatus.INTERNAL_SERVER_ERROR
+                HttpStatus.BAD_REQUEST
             );
         }
     }
@@ -265,10 +266,11 @@ export class MentorController {
 
     @Post('apply')
     @UseGuards(JwtAuthGuard)
-    async applyForMentor(@Req() req: any, @Body() body: any): Promise<any> {
+    @UseInterceptors(FileInterceptor('photo'))
+    async applyForMentor(@Req() req: any, @Body() body: any, @UploadedFile() photo?: any): Promise<any> {
         try {
             const userId = req.user?.id ? BigInt(req.user.id) : BigInt(1);
-            return await this.mentorService.applyForMentor(userId, body);
+            return await this.mentorService.applyForMentor(userId, body, photo);
         } catch (error) {
             throw new HttpException(
                 { message: (error as Error).message },
@@ -338,6 +340,19 @@ export class MentorController {
         try {
             const userId = BigInt(req.user!.id);
             return await this.mentorService.rescheduleBooking(BigInt(id), userId, new Date(body.newDateTime));
+        } catch (error) {
+            throw new HttpException(
+                { message: (error as Error).message },
+                HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    @Post('booking/:id/confirm')
+    @UseGuards(JwtAuthGuard)
+    async confirmBooking(@Req() req: AuthenticatedRequest, @Param('id') id: string): Promise<any> {
+        try {
+            return await this.mentorService.confirmBooking(BigInt(id));
         } catch (error) {
             throw new HttpException(
                 { message: (error as Error).message },

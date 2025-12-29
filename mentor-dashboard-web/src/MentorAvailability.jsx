@@ -7,7 +7,7 @@ const MentorAvailability = () => {
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [newSlot, setNewSlot] = useState({ date: '', start: '', end: '' });
+  const [newSlot, setNewSlot] = useState({ date: '', start: '', end: '', slotsPerDay: 1 });
 
   // Fetch slots from backend
   useEffect(() => {
@@ -43,12 +43,13 @@ const MentorAvailability = () => {
           endDateTime: `${newSlot.date}T${newSlot.end}`,
           title: 'Mentorship Slot',
           description: '',
+          slotsPerDay: newSlot.slotsPerDay,
         })
       });
       if (!res.ok) throw new Error('Failed to add slot');
       const slot = await res.json();
-      setSlots([...slots, slot]);
-      setNewSlot({ date: '', start: '', end: '' });
+      setSlots([...slots, ...slot.availability]); // Since it returns multiple slots
+      setNewSlot({ date: '', start: '', end: '', slotsPerDay: 1 });
     } catch {
       setError('Failed to add slot');
     }
@@ -69,6 +70,10 @@ const MentorAvailability = () => {
         <div style={{ marginBottom: 12 }}>
           <label style={{ color: '#fff', marginRight: 8 }}>End Time:</label>
           <input type="time" value={newSlot.end} onChange={e => setNewSlot({ ...newSlot, end: e.target.value })} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ color: '#fff', marginRight: 8 }}>Slots per Day:</label>
+          <input type="number" min="1" value={newSlot.slotsPerDay} onChange={e => setNewSlot({ ...newSlot, slotsPerDay: parseInt(e.target.value) || 1 })} />
         </div>
         <button onClick={handleAddSlot} style={{ background: 'linear-gradient(90deg, #7C3AED 0%, #F472B6 100%)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 'bold', fontSize: 16, cursor: 'pointer' }}>Add Slot</button>
         {error && <div style={{ color: '#F472B6', marginTop: 10 }}>{error}</div>}

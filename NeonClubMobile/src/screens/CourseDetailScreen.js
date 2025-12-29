@@ -47,27 +47,20 @@ const CourseDetailScreen = ({ route, navigation }) => {
 
   const handlePurchase = async () => {
     if (course.price === 0) {
-      // Free course - direct enrollment
-      try {
-        setLoading(true);
-        await courseAPI.purchaseCourse(course._id, true);
-        setSuccessVisible(true);
-      } catch (error) {
-        const msg = error?.response?.data?.message;
-        if (msg && msg.toLowerCase().includes('already purchased')) {
-          Alert.alert('Already Enrolled', 'You have already enrolled in this course.');
-        } else {
-          Alert.alert('Error', 'Failed to enroll in course');
+      // Free course - direct enrollment without loading
+      navigation.navigate('Payment', {
+        paymentData: {
+          type: 'course',
+          data: course,
         }
-      } finally {
-        setLoading(false);
-      }
+      });
     } else {
       // Paid course - navigate to payment
       navigation.navigate('Payment', {
-        item: course,
-        type: 'course',
-        amount: course.price,
+        paymentData: {
+          type: 'course',
+          data: course,
+        }
       });
     }
   };
@@ -102,7 +95,7 @@ const CourseDetailScreen = ({ route, navigation }) => {
         buttonText="Awesome!"
         onClose={() => {
           setSuccessVisible(false);
-          navigation.navigate('MyLearning');
+          navigation.navigate('MyLearning', { refresh: true, enrolled: true });
         }}
       />
 
@@ -319,12 +312,8 @@ const CourseDetailScreen = ({ route, navigation }) => {
             </View>
           )}
         </View>
-        <TouchableOpacity style={styles.enrollBtn} onPress={handlePurchase} disabled={loading} activeOpacity={0.8}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.enrollBtnText}>{course.price === 0 ? 'Enroll Free' : 'Enroll Now'}</Text>
-          )}
+        <TouchableOpacity style={[styles.enrollBtn, hasPurchased && styles.enrolledBtn]} onPress={hasPurchased ? () => Alert.alert('Already Enrolled', 'You are already enrolled in this course.') : handlePurchase} disabled={loading} activeOpacity={0.8}>
+          <Text style={[styles.enrollBtnText, hasPurchased && styles.enrolledBtnText]}>{hasPurchased ? 'Already Enrolled' : (course.price === 0 ? 'Enroll Free' : 'Enroll Now')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -639,6 +628,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '800',
+  },
+  enrolledBtn: {
+    backgroundColor: '#10B981',
+  },
+  enrolledBtnText: {
+    color: '#fff',
   },
 });
 

@@ -5,9 +5,11 @@ import { CourseModule } from './course.module';
 import { EventModule } from './event.module';
 import { WorkshopModule } from './workshop.module';
 import { AssessmentModule } from './assessment.module';
+import { PrismaService } from '../services/prisma.service';
 
 @Module({
   imports: [NewsModule, CourseModule, EventModule, WorkshopModule, AssessmentModule],
   controllers: [DashboardController],
+  providers: [PrismaService],
 })
 export class DashboardModule {}

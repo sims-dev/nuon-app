@@ -31,7 +31,7 @@ const Card = ({ onPress, children, badge, image }) => {
     <TouchableOpacity onPress={safeOnPress} activeOpacity={0.9} style={styles.card}>
       {/* Image hero with black gradient overlay */}
       <View style={styles.hero}>
-        {image ? <Image source={{ uri: image }} style={styles.heroImg} /> : null}
+        {image ? <Image source={{ uri: image }} style={styles.heroImg} onError={(e) => console.log('Image load error:', e.nativeEvent.error, 'for URL:', image)} /> : null}
         <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]} start={{x:0,y:0}} end={{x:0,y:1}} style={styles.heroOverlay} />
         {badge ? (
           <View style={styles.badgeRight}><Text style={styles.badgeRightText}>{badge}</Text></View>
@@ -46,24 +46,19 @@ const ActivitiesScreen = ({ navigation, route }) => {
   // Default to Events per spec; route can override via params.open
   const [tab, setTab] = useState('events');
   const [query, setQuery] = useState('');
-  // Seed with lightweight defaults so the screen renders instantly while network fetch happens
-  const [events, setEvents] = useState([
-    { title: 'Basic Life Support Webinar', date: 'TBA', time: 'TBA', location: 'Online', price: 0, _id: 'prefill_e1' },
-  ]);
-  const [workshops, setWorkshops] = useState([
-    { title: 'Neonatal Care Workshop', date: 'TBA', duration: '2h', location: 'City Hospital', price: 499, seats: 12, _id: 'prefill_w1' },
-  ]);
-  const [courses, setCourses] = useState([
-    { title: 'Advanced Wound Care — Essentials and Best Practices for Clinical Outcomes', duration: '6h', price: 999, _id: 'prefill_c1' },
-  ]);
+  const [events, setEvents] = useState([]);
+  const [workshops, setWorkshops] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [enrolledCourses, setEnrolledCourses] = useState([]);
 
   useEffect(() => {
     const fetchLists = async () => {
       try {
-        const [e, w, c] = await Promise.all([
+        const [e, w, c, enrolled] = await Promise.all([
           eventAPI.getEvents().catch(() => ({ data: [] })),
           workshopAPI.getWorkshops().catch(() => ({ data: [] })),
           courseAPI.getCourses().catch(() => ({ data: [] })),
+          courseAPI.getMyCourses().catch(() => ({ data: { courses: [] } })),
         ]);
         let eList = e?.data?.events || e?.data || [];
         let wList = w?.data?.workshops || w?.data || [];
@@ -71,25 +66,11 @@ const ActivitiesScreen = ({ navigation, route }) => {
         if (!Array.isArray(eList)) eList = [];
         if (!Array.isArray(wList)) wList = [];
         if (!Array.isArray(cList)) cList = [];
-        if (eList.length === 0) {
-          eList = [
-            { title: 'Basic Life Support Webinar', date: '2025-11-05', time: '10:00 AM', location: 'Online', price: 0, points: 25, _id: 'demo_e1' },
-            { title: 'Infection Control Update', date: '2025-11-12', time: '4:00 PM', location: 'Online', price: 0, points: 30, _id: 'demo_e2' },
-          ];
-        }
-        if (wList.length === 0) {
-          wList = [
-            { title: 'Neonatal Care Workshop', date: '2025-11-20', duration: '2h', location: 'City Hospital', price: 499, points: 80, seats: 12, _id: 'demo_w1' },
-          ];
-        }
-        if (cList.length === 0) {
-          cList = [
-            { title: 'Advanced Wound Care', duration: '6h', price: 999, points: 120, _id: 'demo_c1' },
-          ];
-        }
+        // No demo data - only show real-time data from backend
   setEvents(eList);
   setWorkshops(wList);
   setCourses(cList);
+  setEnrolledCourses(enrolled.data?.courses || []);
         // If request came with an 'open' param, select the tab and push viewer
         const open = route?.params?.open;
         if (open && open.type) {
@@ -134,19 +115,26 @@ const ActivitiesScreen = ({ navigation, route }) => {
 
   // Always use full URL for local uploads
   const BASE_URL = `http://${IP_ADDRESS}:5000`;
-  const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
+  const getFullUrl = (path) => {
+    const fullUrl = path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
+    console.log('getFullUrl input:', path, 'output:', fullUrl);
+    return fullUrl;
+  };
 
   const renderItem = ({ item }) => {
+    console.log('renderItem item:', item);
     const type = tab === 'events' ? 'Event' : tab === 'workshops' ? 'Workshop' : 'Course';
     const seatsBadge = tab !== 'courses' && item.seats != null ? `${item.seats} seats left` : undefined;
     const points = item.points != null ? item.points : 50;
     // Always use thumbnail for the card image, robust for all types
     const img = getFullUrl(item.thumbnail) || getFullUrl(item.imageUrl) || 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=1600&auto=format&fit=crop';
+    console.log('renderItem img:', img);
     const chipBg = type === 'Event' ? '#10B981' : type === 'Workshop' ? '#8B5CF6' : '#3B82F6';
+    const isEnrolled = tab === 'courses' ? enrolledCourses.some(enrolled => enrolled._id === item._id) : false;
     return (
       <Card image={img} badge={seatsBadge} onPress={() => navigation.navigate(
         tab === 'events' ? 'EventViewer' : tab === 'workshops' ? 'WorkshopViewer' : 'CourseDetail',
-        { [tab === 'courses' ? 'course' : tab.slice(0, -1)]: item }
+        tab === 'courses' ? { course: item, hasPurchased: isEnrolled } : { [tab.slice(0, -1)]: item }
       )}>
         {/* Body */}
         <View style={styles.bodyRow}>

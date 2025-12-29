@@ -1,9 +1,13 @@
 import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export enum EngageActivityCategory {
+  COURSE = 'course',
+  EVENT = 'event',
+  WORKSHOP = 'workshop',
   WELLNESS = 'wellness',
   FITNESS = 'fitness',
-  EVENT = 'event',
+  CONFERENCE = 'conference',
 }
 
 export enum EngageActivityStatus {
@@ -47,11 +51,13 @@ export class CreateEngageActivityDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Transform(({ value }) => value ? parseFloat(value) : 0)
   price?: number = 0;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Transform(({ value }) => value ? parseFloat(value) : 100)
   points?: number = 100;
 
   @IsOptional()
@@ -64,6 +70,7 @@ export class CreateEngageActivityDto {
 
   @IsOptional()
   @IsNumber()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
   instructorId?: number;
 
   @IsOptional()
@@ -101,6 +108,7 @@ export class CreateEngageActivityDto {
 
   @IsOptional()
   @IsNumber()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
   videoDuration?: number;
 
   @IsOptional()
@@ -160,6 +168,7 @@ export class UpdateEngageActivityDto {
 
   @IsOptional()
   @IsNumber()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
   instructorId?: number;
 
   @IsOptional()
@@ -169,6 +178,7 @@ export class UpdateEngageActivityDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
   capacity?: number;
 
   @IsOptional()
@@ -178,6 +188,30 @@ export class UpdateEngageActivityDto {
   @IsOptional()
   @IsString()
   tags?: string;
+
+  @IsOptional()
+  @IsString()
+  videoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  videoThumbnail?: string;
+
+  @IsOptional()
+  @IsString()
+  videoTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  videoQuality?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  videoDuration?: number;
+
+  @IsOptional()
+  isActive?: boolean;
 }
 
 export class EngageActivityResponseDto {

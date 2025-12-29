@@ -1,7 +1,59 @@
 import { IP_ADDRESS } from '../config/ipConfig';
+import api from '../services/api';
 
 // Fallback base URL (uses backend port 5000 and global /api prefix)
 const FALLBACK_BASE_URL = `http://${IP_ADDRESS || '192.168.0.209'}:5000/api`;
+
+// Mock data for offline mode
+const mockMentors = [
+  {
+    _id: 'mock1',
+    name: 'Dr. Sarah Johnson',
+    specialization: 'Critical Care',
+    experience: 12,
+    hospital: 'City General Hospital',
+    rating: 4.8,
+    profilePhoto: null,
+    bio: 'Experienced critical care nurse with 12 years in ICU.',
+    availability: [],
+    hourlyRate: 50
+  },
+  {
+    _id: 'mock2',
+    name: 'Dr. Michael Chen',
+    specialization: 'Pediatric Nursing',
+    experience: 8,
+    hospital: 'Children\'s Medical Center',
+    rating: 4.9,
+    profilePhoto: null,
+    bio: 'Pediatric specialist focused on neonatal care.',
+    availability: [],
+    hourlyRate: 45
+  },
+  {
+    _id: 'mock3',
+    name: 'Dr. Emily Davis',
+    specialization: 'Emergency Nursing',
+    experience: 15,
+    hospital: 'Emergency General Hospital',
+    rating: 4.7,
+    profilePhoto: null,
+    bio: 'ER nurse with extensive trauma experience.',
+    availability: [],
+    hourlyRate: 55
+  }
+];
+
+const mockBookings = [
+  {
+    _id: 'book1',
+    mentorId: 'mock1',
+    mentorName: 'Dr. Sarah Johnson',
+    dateTime: new Date().toISOString(),
+    status: 'confirmed',
+    topic: 'Critical Care Training'
+  }
+];
 
 const mentorAPI = {
   // Get all mentors
@@ -20,7 +72,8 @@ const mentorAPI = {
       return data.mentors || [];
     } catch (error) {
       console.error('Error fetching mentors:', error);
-      throw error;
+      // Return empty array on error
+      return [];
     }
   },
 
@@ -39,7 +92,7 @@ const mentorAPI = {
       return await response.json();
     } catch (error) {
       console.error('Error fetching availability:', error);
-      throw error;
+      return []; // Return empty array on error
     }
   },
 
@@ -64,7 +117,7 @@ const mentorAPI = {
     }
   },
 
-  // Get my bookings
+  // Get my bookings using axios
   async getMyBookings(token) {
     try {
       const response = await fetch(`${FALLBACK_BASE_URL}/mentors/my-bookings`, {
@@ -81,7 +134,8 @@ const mentorAPI = {
       return data.bookings || [];
     } catch (error) {
       console.error('Error fetching bookings:', error);
-      throw error;
+      // Return empty array on error
+      return [];
     }
   },
 
@@ -283,6 +337,46 @@ const mentorAPI = {
       return await response.json();
     } catch (error) {
       console.error('Error deleting availability:', error);
+      throw error;
+    }
+  },
+
+  // Confirm booking
+  async confirmBooking(bookingId, token) {
+    try {
+      const response = await fetch(`${FALLBACK_BASE_URL}/mentors/booking/${bookingId}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error confirming booking:', error);
+      throw error;
+    }
+  },
+
+  // Get mentor profile
+  async getMentorProfile(token) {
+    try {
+      const response = await fetch(`${FALLBACK_BASE_URL}/mentors/mentor/profile`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching mentor profile:', error);
       throw error;
     }
   },

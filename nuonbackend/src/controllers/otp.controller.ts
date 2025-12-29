@@ -16,7 +16,7 @@ export class OtpController {
     }
 
     @Post('verify')
-    async verifyOTP(@Body() body: { identifier: string; otp: string; type: 'phone' | 'email' }): Promise<any> {
+    async verifyOTP(@Body() body: { identifier: string; otp?: string; type: 'phone' | 'email'; firebaseIdToken?: string; provider?: string }): Promise<any> {
         return this.otpService.verifyOTP(body);
     }
 }

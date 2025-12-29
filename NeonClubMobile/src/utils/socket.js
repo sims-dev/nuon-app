@@ -22,7 +22,7 @@ export function connectSocket() {
       transports: ['websocket'],
       withCredentials: false,
       forceNew: true,
-      timeout: 10000, // 10 second connection timeout
+      timeout: 2000, // 2 second connection timeout
       reconnection: true,
       reconnectionAttempts: 3,
       reconnectionDelay: 1000,

@@ -10,7 +10,7 @@ const defaultConfig = getDefaultConfig(__dirname);
 
 const config = {
   resetCache: true,
-  maxWorkers: 1,
+  maxWorkers: 2,
   transformer: {
     // use the svg transformer for .svg imports
     babelTransformerPath: require.resolve('react-native-svg-transformer'),

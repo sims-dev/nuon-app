@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { NotificationService } from './notification.service';
 import { getSocket } from '../lib/socket';
 
 @Injectable()
 export class BookingService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly notificationService: NotificationService
+    ) {}
 
     async createBooking(bookingData: any, userId: bigint): Promise<any> {
         try {
@@ -33,6 +37,14 @@ export class BookingService {
                     catalogItem: true,
                     mentorAvailability: true
                 }
+            });
+
+            // Create notification for the mentor
+            await this.notificationService.createNotification({
+                userId: booking.mentorId.toString(),
+                title: 'New Session Request',
+                body: `New booking request from ${booking.nurse.name}`,
+                type: 'booking_request'
             });
 
             // Emit socket notification for booking creation
@@ -80,6 +92,14 @@ export class BookingService {
                     catalogItem: true,
                     mentorAvailability: true
                 }
+            });
+
+            // Create notification for the nurse
+            await this.notificationService.createNotification({
+                userId: booking.nurseId.toString(),
+                title: 'Booking Update',
+                body: `Your booking has been ${status}`,
+                type: 'booking_update'
             });
 
             // Emit socket notification for booking status update

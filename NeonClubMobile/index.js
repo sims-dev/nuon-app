@@ -2,6 +2,9 @@
  * @format
  */
 
+// Initialize Firebase app first
+import '@react-native-firebase/app';
+
 import 'react-native-gesture-handler';
 import { AppRegistry } from 'react-native';
 import App from './App';

@@ -7,17 +7,19 @@ import {
   StyleSheet,
   Platform,
   Image,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
 import { SvgXml } from 'react-native-svg';
 import Video from 'react-native-video';
-import api from '../services/api';
+import api, { getFullMediaUrl, engageAPI } from '../services/api';
 import { IP_ADDRESS } from '../../config/ipConfig';
 import BookingPromptModal from '../components/BookingPromptModal';
+import CelebrationModal from '../components/CelebrationModal';
 import { checkProfileCompletion } from '../utils/profileUtils';
+import { connectSocket, on as onSocket, disconnectSocket } from '../utils/socket';
 
 // SVG Icons
 const chevronLeftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -30,14 +32,38 @@ const activitySvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
 const giftSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="m12 7 5-5H7l5 5z"/></svg>`;
 
 const BASE_URL = `http://${IP_ADDRESS}:5000`;
-const getFullUrl = (path) => path && path.startsWith('/uploads') ? `${BASE_URL}${path}` : path;
+const getFullUrl = (path) => {
+  if (!path) return path;
+  if (path.startsWith('/uploads')) return `${BASE_URL}${path}`;
+  if (path.includes('localhost')) return path.replace('localhost', IP_ADDRESS);
+  return path;
+};
 
 const EngageDetailsScreen = ({ navigation, route }) => {
   const { item } = route.params || {};
   const [isLoading, setIsLoading] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
+  const [successOptionsVisible, setSuccessOptionsVisible] = useState(false);
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [missingFields, setMissingFields] = useState([]);
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [checkingRegistration, setCheckingRegistration] = useState(true);
+  const [enrolledCount, setEnrolledCount] = useState(item.enrolled || item.enrolledCount || 0);
+  const [videoError, setVideoError] = useState(false);
+
+  const checkRegistrationStatus = async () => {
+    if (!item) return;
+    try {
+      const response = await api.get('/engage/my-registrations');
+      const registrations = response.data.registrations || []; console.log('[EngageDetails] Registrations:', registrations);
+      const isAlreadyRegistered = registrations.some(reg => reg.id === item.id || reg.activityId === item.id);
+      setIsRegistered(isAlreadyRegistered);
+    } catch (error) {
+      console.log('Error checking registration status:', error);
+    } finally {
+      setCheckingRegistration(false);
+    }
+  };
 
   useEffect(() => {
     if (!item) {
@@ -45,39 +71,89 @@ const EngageDetailsScreen = ({ navigation, route }) => {
     }
   }, [item, navigation]);
 
+  useEffect(() => {
+    checkRegistrationStatus();
+  }, [item]);
+
+  // Refresh registration status when screen comes into focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (item) {
+        setCheckingRegistration(true);
+        checkRegistrationStatus();
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, item]);
+
+  // Socket connection for real-time updates
+   useEffect(() => {
+     if (!item?.id) return;
+
+     const sock = connectSocket();
+     const unsubs = [
+       onSocket('content:engage:updated', (updateData) => {
+         if (updateData.activityId === item.id) {
+           // Update enrolled count
+           setEnrolledCount(prev => prev + 1);
+           // Re-check registration status for real-time updates
+           checkRegistrationStatus();
+         }
+       }),
+     ];
+
+     return () => {
+       unsubs.forEach(fn => fn && fn());
+       disconnectSocket();
+     };
+   }, [item?.id]);
+  
+  useEffect(() => {
+    if (item) {
+      console.log('[EngageDetails] Item loaded:', item);
+      console.log('[EngageDetails] Video URL:', item.videoUrl || 'none');
+      console.log('[EngageDetails] Thumbnail:', item.videoThumbnail || 'none');
+    }
+  }, [item]);
+
   const handlePurchase = async () => {
+    console.log('[EngageDetails] handlePurchase called, isRegistered:', isRegistered, 'item:', item);
+    if (isRegistered) {
+      // Already registered, navigate to MyLearning
+      console.log('[EngageDetails] Already registered, navigating to MyLearning');
+      navigation.navigate('MyLearning');
+      return;
+    }
+
     try {
+      console.log('[EngageDetails] Checking profile completion...');
       const { isComplete, missingFields: fields } = await checkProfileCompletion();
+      console.log('[EngageDetails] Profile check result:', { isComplete, fields });
       if (!isComplete) {
         setMissingFields(fields);
         setShowProfilePrompt(true);
+        console.log('[EngageDetails] Profile incomplete, showing prompt');
         return;
       }
 
-      if (item.price === 0) {
-        // For free items, register directly and show success
-        setIsLoading(true);
-        try {
-          await api.post(`/engage/activities/${item.id}/register`, {
-            paymentId: 'free_' + Date.now(),
-            paymentMethod: 'free',
-          });
-          setIsLoading(false);
-          // Navigate to MyLearning after successful registration
-          navigation.navigate('MyLearning');
-        } catch (error) {
-          setIsLoading(false);
-          Alert.alert('Error', 'Failed to register for the activity');
-        }
-      } else {
-        // For paid items, navigate to payment screen
+      // Navigate to payment screen for both free and paid items
+      console.log('[EngageDetails] Navigating to Payment');
+      try {
         navigation.navigate('Payment', {
-          item,
-          type: 'engage-activity'
+          paymentData: {
+            type: 'engage-activity',
+            data: item,
+            mode: 'orderSummary'
+          }
         });
+        console.log('[EngageDetails] Navigation to Payment successful');
+      } catch (navError) {
+        console.error('[EngageDetails] Navigation to Payment failed:', navError);
+        Alert.alert('Error', 'Something went wrong unable to open payment screen');
       }
     } catch (error) {
-      console.log('Purchase error:', error);
+      console.log('[EngageDetails] Purchase error:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
     }
   };
@@ -123,7 +199,7 @@ const EngageDetailsScreen = ({ navigation, route }) => {
     }
   };
 
-  if (!item) {
+  if (!item || typeof item.title !== 'string') {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.empty}>
@@ -133,24 +209,31 @@ const EngageDetailsScreen = ({ navigation, route }) => {
     );
   }
 
-  const img = item.thumbnail && item.thumbnail.startsWith('/uploads')
-    ? `${BASE_URL}${item.thumbnail}`
-    : item.thumbnail;
+  const img = getFullMediaUrl(item.thumbnail);
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Success Modal */}
-      {successVisible && (
-        <View style={styles.successModalBackdrop}>
-          <View style={styles.successModalCard}>
-            <Text style={styles.successTitle}>🎉 Payment Successful!</Text>
-            <Text style={styles.successMsg}>You're enrolled in {item.title}.</Text>
-            <TouchableOpacity style={styles.successBtn} onPress={() => { setSuccessVisible(false); navigation.navigate('MyLearning'); }}>
-              <Text style={styles.successBtnText}>Awesome!</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      <CelebrationModal
+        isVisible={successVisible}
+        onClose={() => { setSuccessVisible(false); setSuccessOptionsVisible(true); }}
+        title="🎉 Payment Successful!"
+        message={`You're enrolled in ${item.title}`}
+        icon="gift"
+        points={item.points || 0}
+      />
+
+      {/* Success Options Modal */}
+      <CelebrationModal
+        isVisible={successOptionsVisible}
+        title="🎉 Payment Successful!"
+        message={`You're enrolled in ${item.title}`}
+        icon="gift"
+        points={item.points || 0}
+        showOptions={true}
+        onGoToMyLearning={() => { setSuccessOptionsVisible(false); navigation.navigate('MyLearning'); }}
+        onBackToDashboard={() => { setSuccessOptionsVisible(false); navigation.navigate('Main'); }}
+      />
 
       {/* Header */}
       <View style={styles.header}>
@@ -168,21 +251,67 @@ const EngageDetailsScreen = ({ navigation, route }) => {
       <ScrollView contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
         {/* Hero Image or Video */}
         <View style={styles.heroContainer}>
-          {item.videoUrl ? (
+          {item.videoUrl && isRegistered && !videoError ? (
+            // Show video player if registered
+            <View style={styles.videoContainer}>
+              <Video
+                source={{ uri: getFullMediaUrl(item.videoUrl) }}
+                style={styles.videoPlayer}
+                controls={true}
+                resizeMode="cover"
+                paused={false}
+                onError={(e) => {
+                  console.log('[EngageDetails] Video error:', e);
+                  setVideoError(true);
+                }}
+                onLoad={() => console.log('[EngageDetails] Video loaded')}
+                onLoadStart={() => console.log('[EngageDetails] Video load start')}
+                bufferConfig={{
+                  minBufferMs: 15000,
+                  maxBufferMs: 50000,
+                  bufferForPlaybackMs: 2500,
+                  bufferForPlaybackAfterRebufferMs: 5000,
+                }}
+                maxBitRate={2000000}
+              />
+            </View>
+          ) : item.videoUrl && isRegistered && videoError ? (
+            // Show error message if video failed to load
+            <View style={styles.videoContainer}>
+              <View style={styles.videoError}>
+                <Text style={styles.errorText}>Video unavailable</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={() => setVideoError(false)}>
+                  <Text style={styles.retryText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : item.videoUrl ? (
+            // Show thumbnail with play button if not registered
             <TouchableOpacity onPress={() => {
-              navigation.navigate('VideoPlayer', {
-                videoUrl: item.videoUrl,
-                title: item.videoTitle || item.title,
-                thumbnail: item.videoThumbnail
-              });
+              if (isRegistered) {
+                // If somehow registered, show video
+                navigation.navigate('VideoPlayer', {
+                  videoUrl: getFullMediaUrl(item.videoUrl),
+                  title: item.videoTitle || item.title,
+                  thumbnail: getFullMediaUrl(item.videoThumbnail)
+                });
+              } else {
+                // Show preview or encourage registration
+                Alert.alert('Preview Not Available', 'Register to access the full video content.');
+              }
             }}>
-              <Image source={{ uri: item.videoThumbnail || img }} style={styles.heroImage} />
+              <Image source={{ uri: getFullMediaUrl(item.videoThumbnail) || img }} style={styles.heroImage} onError={() => console.log('[EngageDetails] Image error')} />
               <View style={styles.playButton}>
                 <Text style={styles.playIcon}>▶</Text>
               </View>
               {item.video_duration && (
                 <View style={styles.videoDuration}>
                   <Text style={styles.durationText}>{item.video_duration}</Text>
+                </View>
+              )}
+              {!isRegistered && (
+                <View style={styles.previewOverlay}>
+                  <Text style={styles.previewText}>Register to Watch Full Video</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -214,13 +343,13 @@ const EngageDetailsScreen = ({ navigation, route }) => {
               {item.category === 'fitness' && (
                 <SvgXml xml={activitySvg} width={20} height={20} color="#F97316" />
               )}
-              {item.category === 'event' && (
-                <SvgXml xml={activitySvg} width={20} height={20} color="#3B82F6" />
+              {(item.category === 'event' || item.category === 'conference') && (
+                <SvgXml xml={calendarSvg} width={20} height={20} color="#3B82F6" />
               )}
               <Text style={[styles.categoryName, {
                 color: item.category === 'wellness' ? '#9333EA' : item.category === 'fitness' ? '#F97316' : '#3B82F6'
               }]}>
-                {item.category === 'wellness' ? 'Wellness' : item.category === 'fitness' ? 'Fitness' : 'Event'}
+                {item.category === 'wellness' ? 'Wellness' : item.category === 'fitness' ? 'Fitness' : item.category === 'conference' ? 'Conference' : 'Event'}
               </Text>
             </View>
             <Text style={styles.title}>{item.title}</Text>
@@ -237,7 +366,7 @@ const EngageDetailsScreen = ({ navigation, route }) => {
                 <SvgXml xml={calendarSvg} width={20} height={20} color="#2563EB" />
                 <View style={styles.infoText}>
                   <Text style={styles.infoLabel}>Date</Text>
-                  <Text style={styles.infoValue}>{item.date}</Text>
+                  <Text style={styles.infoValue}>{item.date ? String(item.date) : 'N/A'}</Text>
                 </View>
               </View>
             )}
@@ -277,7 +406,7 @@ const EngageDetailsScreen = ({ navigation, route }) => {
                 <SvgXml xml={usersSvg} width={20} height={20} color="#2563EB" />
                 <View style={styles.infoText}>
                   <Text style={styles.infoLabel}>Enrolled</Text>
-                  <Text style={styles.infoValue}>{item.enrolled} participants</Text>
+                  <Text style={styles.infoValue}>{enrolledCount} participants</Text>
                 </View>
               </View>
             )}
@@ -287,7 +416,7 @@ const EngageDetailsScreen = ({ navigation, route }) => {
                 <SvgXml xml={usersSvg} width={20} height={20} color="#2563EB" />
                 <View style={styles.infoText}>
                   <Text style={styles.infoLabel}>Availability</Text>
-                  <Text style={styles.infoValue}>{item.capacity - (item.enrolled || 0)} spots available</Text>
+                  <Text style={styles.infoValue}>{item.capacity - enrolledCount} spots available</Text>
                 </View>
               </View>
             )}
@@ -305,7 +434,7 @@ const EngageDetailsScreen = ({ navigation, route }) => {
             <View style={styles.benefitsList}>
               {getWhatYouWillGet().map((benefit, index) => (
                 <View key={index} style={styles.benefitRow}>
-                  <View style={styles.bulletPoint}></View>
+                  <View style={styles.bulletPoint} />
                   <Text style={styles.benefitText}>{benefit}</Text>
                 </View>
               ))}
@@ -359,22 +488,40 @@ const EngageDetailsScreen = ({ navigation, route }) => {
             </View>
           </View>
 
-          <TouchableOpacity
-            style={[styles.registerBtn, isLoading && styles.registerBtnDisabled]}
-            onPress={handlePurchase}
-            disabled={isLoading}
-          >
-            <LinearGradient
-              colors={item.category === 'wellness' ? ['#9333EA', '#9333EA'] : item.category === 'fitness' ? ['#F97316', '#F97316'] : ['#3B82F6', '#3B82F6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.registerBtnGradient}
+          {checkingRegistration ? (
+            <View style={[styles.registerBtn, { backgroundColor: '#E5E7EB' }]}>
+              <Text style={[styles.registerBtnText, { color: '#6B7280' }]}>Loading...</Text>
+            </View>
+          ) : isRegistered ? (
+            <View style={styles.registeredContainer}>
+              <View style={styles.registeredBadge}>
+                <Text style={styles.registeredText}>✓ Already Registered</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.viewInLearningBtn}
+                onPress={() => navigation.navigate('MyLearning')}
+              >
+                <Text style={styles.viewInLearningText}>View in My Learning</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.registerBtn, isLoading && styles.registerBtnDisabled]}
+              onPress={handlePurchase}
+              disabled={isLoading}
             >
-              <Text style={styles.registerBtnText}>
-                {isLoading ? 'Processing...' : (item.price === 0 ? 'Register Free' : item.category === 'event' ? 'Register Now' : 'Join Program')}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+              <LinearGradient
+                colors={item.category === 'wellness' ? ['#9333EA', '#9333EA'] : item.category === 'fitness' ? ['#F97316', '#F97316'] : ['#3B82F6', '#3B82F6']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.registerBtnGradient}
+              >
+                <Text style={styles.registerBtnText}>
+                  {isLoading ? 'Processing...' : (item.price === 0 ? 'Register Free' : item.category === 'event' ? 'Register Now' : 'Join Program')}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -382,7 +529,7 @@ const EngageDetailsScreen = ({ navigation, route }) => {
         visible={showProfilePrompt}
         onCompleteNow={() => {
           setShowProfilePrompt(false);
-          navigation.navigate('Profile', { screen: 'ProfileEdit' });
+          navigation.navigate('ProfileEdit');
         }}
         onMaybeLater={() => setShowProfilePrompt(false)}
         missingFields={missingFields}
@@ -461,6 +608,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginTop: 4,
+  },
+  videoError: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    color: '#6B7280',
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  retryButton: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   scrollContent: {
     flex: 1,
@@ -710,6 +879,49 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     fontSize: 16,
+  },
+  previewOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  registeredContainer: {
+    gap: 12,
+  },
+  registeredBadge: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  registeredText: {
+    color: '#166534',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  viewInLearningBtn: {
+    backgroundColor: '#7C3AED',
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  viewInLearningText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

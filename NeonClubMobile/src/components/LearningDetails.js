@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,13 @@ import {
 } from 'react-native';
 import { ChevronLeft, Calendar, Clock, MapPin, Users, BookOpen, IndianRupee, Gift, GraduationCap, Award, Briefcase, Video as VideoIcon, Download } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Video from 'react-native-video';
 import { NeonCard } from './NeonCard';
 import { NeonButton } from './NeonButton';
-import { ProfileCompletionPrompt } from './ProfileCompletionPrompt';
+import ProfileCompletionPrompt from './ProfileCompletionPrompt';
 import { IP_ADDRESS } from '../../config/ipConfig';
+import { connectSocket, on as onSocket, disconnectSocket } from '../utils/socket';
+import api from '../services/api';
+import { checkProfileCompletion } from '../utils/profileUtils';
 
 const BASE_URL = `http://${IP_ADDRESS}:5000`;
 
@@ -77,6 +79,48 @@ const Button = ({ children, onPress, style, disabled }) => (
 export default function LearningDetails({ navigation, route }) {
   const { type, data } = route.params || { type: 'course', data: {} };
   const [showCompletionPrompt, setShowCompletionPrompt] = useState(false);
+  const [enrolledCount, setEnrolledCount] = useState(data.enrolled || data.enrolledCount || 0);
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [checkingRegistration, setCheckingRegistration] = useState(true);
+  const [successVisible, setSuccessVisible] = useState(false);
+
+  // Check registration status
+  useEffect(() => {
+    const checkRegistrationStatus = async () => {
+      if (!data.id) return;
+      try {
+        const response = await api.get('/engage/my-registrations');
+        const registrations = response.data.registrations || [];
+        const isAlreadyRegistered = registrations.some(reg => reg.id === data.id || reg.activityId === data.id);
+        setIsRegistered(isAlreadyRegistered);
+      } catch (error) {
+        console.log('Error checking registration status:', error);
+      } finally {
+        setCheckingRegistration(false);
+      }
+    };
+    checkRegistrationStatus();
+  }, [data.id]);
+
+  // Socket connection for real-time updates
+  useEffect(() => {
+    if (!data.id) return;
+
+    const sock = connectSocket();
+    const unsubs = [
+      onSocket('content:engage:updated', (updateData) => {
+        if (updateData.activityId === data.id) {
+          // Update enrolled count
+          setEnrolledCount(prev => prev + 1);
+        }
+      }),
+    ];
+
+    return () => {
+      unsubs.forEach(fn => fn && fn());
+      disconnectSocket();
+    };
+  }, [data.id]);
 
   // Add safety check for data
   if (!data || !data.title) {
@@ -96,54 +140,33 @@ export default function LearningDetails({ navigation, route }) {
   }
 
   const handlePurchase = async () => {
+    if (isRegistered) {
+      // Already registered, navigate to MyLearning
+      navigation.navigate('MyLearning');
+      return;
+    }
+
     try {
-      // Check if profile is incomplete
-      const profileIncomplete = await AsyncStorage.getItem('profileIncomplete');
-      if (profileIncomplete === 'true') {
-        Alert.alert(
-          'Complete Your Profile',
-          'Please complete your professional information to book learning programs. This helps us provide you with the best experience.\n\nMissing information:\n\n• Current Workplace\n• Nursing Registration Number\n• Highest Qualification',
-          [
-            { text: 'Maybe Later', style: 'cancel' },
-            { text: 'Complete Profile Now', onPress: () => navigation.navigate('ProfileSetup') }
-          ]
-        );
+      // Check if profile is incomplete using centralized utility
+      const profileStatus = await checkProfileCompletion();
+      if (profileStatus.profileIncomplete) {
+        setShowCompletionPrompt(true);
         return;
       }
 
-      // Additional check for profile completion status
-      const userProfile = await AsyncStorage.getItem('nurseProfile');
-      if (userProfile) {
-        const profile = JSON.parse(userProfile);
-        const requiredFields = ['organization', 'registrationNumber', 'highestQualification'];
-        const missingFields = requiredFields.filter(field => !profile[field]);
-
-        if (missingFields.length > 0) {
-          const missingLabels = {
-            organization: 'Current Workplace',
-            registrationNumber: 'Nursing Registration Number',
-            highestQualification: 'Highest Qualification'
-          };
-          const missingText = missingFields.map(field => `• ${missingLabels[field] || field}`).join('\n');
-
-          Alert.alert(
-            'Complete Your Profile',
-            `Please complete your professional information to book learning programs. This helps us provide you with the best experience.\n\nMissing information:\n\n${missingText}`,
-            [
-              { text: 'Maybe Later', style: 'cancel' },
-              { text: 'Complete Profile Now', onPress: () => navigation.navigate('ProfileSetup') }
-            ]
-          );
-          return;
-        }
-      }
-
-      if (data.price === 0) {
-        // For free items, register directly and navigate to MyLearning
-        navigation.navigate('MyLearning');
-      } else {
-        // For paid items, navigate to payment screen
-        navigation.navigate('Payment', { type, data });
+      // Navigate to payment screen for both free and paid items
+      try {
+        navigation.navigate('Payment', {
+          paymentData: {
+            type,
+            data,
+            mode: 'orderSummary' // Flag to show order summary first
+          }
+        });
+        console.log('[LearningDetails] Navigation to Payment successful');
+      } catch (navError) {
+        console.error('[LearningDetails] Navigation to Payment failed:', navError);
+        Alert.alert('Error', 'Something went wrong unable to open payment screen');
       }
     } catch (error) {
       console.log('Purchase error:', error);
@@ -243,15 +266,25 @@ export default function LearningDetails({ navigation, route }) {
 
         {/* Video Section for Purchased Courses */}
         {type === 'course' && data.hasPurchased && data.videoUrl && (
-          <View style={styles.videoSection}>
+          <TouchableOpacity style={styles.videoSection} onPress={() => {
+            const videoUrl = data.videoUrl && data.videoUrl.startsWith('/uploads') ? `${BASE_URL}${data.videoUrl}` : data.videoUrl;
+            navigation.navigate('VideoPlayer', {
+              videoUrl,
+              title: data.videoTitle || data.title,
+              courseId: data.id,
+              lessonId: 'main_video'
+            });
+          }}>
             <Text style={styles.videoTitle}>{data.videoTitle || 'Course Video'}</Text>
             <View style={styles.videoContainer}>
-              <Video
-                source={{ uri: getFullUrl(data.videoUrl) }}
+              <ImageWithFallback
+                src={data.thumbnail || data.image}
+                alt="Video thumbnail"
                 style={styles.videoPlayer}
-                controls={true}
-                resizeMode="contain"
               />
+              <View style={styles.playButton}>
+                <Text style={styles.playIcon}>▶</Text>
+              </View>
             </View>
             {data.videoDuration && (
               <Text style={styles.videoDuration}>Duration: {data.videoDuration} minutes</Text>
@@ -259,7 +292,37 @@ export default function LearningDetails({ navigation, route }) {
             {data.videoQuality && (
               <Text style={styles.videoQuality}>Quality: {data.videoQuality}</Text>
             )}
-          </View>
+          </TouchableOpacity>
+        )}
+
+        {/* Video Section for Engage Activities when registered */}
+        {type === 'engage-activity' && isRegistered && data.videoUrl && (
+          <TouchableOpacity style={styles.videoSection} onPress={() => {
+            const videoUrl = data.videoUrl && data.videoUrl.startsWith('/uploads') ? `${BASE_URL}${data.videoUrl}` : data.videoUrl;
+            navigation.navigate('VideoPlayer', {
+              videoUrl,
+              title: data.videoTitle || data.title,
+              thumbnail: data.videoThumbnail || data.thumbnail
+            });
+          }}>
+            <Text style={styles.videoTitle}>{data.videoTitle || 'Activity Video'}</Text>
+            <View style={styles.videoContainer}>
+              <ImageWithFallback
+                src={data.videoThumbnail || data.thumbnail || data.image}
+                alt="Video thumbnail"
+                style={styles.videoPlayer}
+              />
+              <View style={styles.playButton}>
+                <Text style={styles.playIcon}>▶</Text>
+              </View>
+            </View>
+            {data.videoDuration && (
+              <Text style={styles.videoDuration}>Duration: {data.videoDuration} minutes</Text>
+            )}
+            {data.videoQuality && (
+              <Text style={styles.videoQuality}>Quality: {data.videoQuality}</Text>
+            )}
+          </TouchableOpacity>
         )}
 
         <View style={styles.content}>
@@ -323,7 +386,7 @@ export default function LearningDetails({ navigation, route }) {
                     <Users size={20} color="#2563EB" style={{ marginRight: 8 }} />
                     <View>
                       <Text style={styles.infoLabel}>Enrolled</Text>
-                      <Text style={styles.infoValue}>{(data.enrolled || data.enrolledCount) ? `${data.enrolled || data.enrolledCount} students` : '234 students'}</Text>
+                      <Text style={styles.infoValue}>{enrolledCount ? `${enrolledCount} students` : '234 students'}</Text>
                     </View>
                   </View>
                   <View style={styles.infoRow}>
@@ -369,7 +432,7 @@ export default function LearningDetails({ navigation, route }) {
                       <Users size={20} color="#2563EB" />
                       <View>
                         <Text style={styles.infoLabel}>Availability</Text>
-                        <Text style={styles.infoValue}>{data.capacity - (data.registeredCount || data.enrolled || data.enrolledCount || 0)} seats remaining</Text>
+                        <Text style={styles.infoValue}>{data.capacity - enrolledCount} seats remaining</Text>
                       </View>
                     </View>
                   )}
@@ -402,7 +465,7 @@ export default function LearningDetails({ navigation, route }) {
                     <Users size={20} color="#2563EB" style={{ marginRight: 8 }} />
                     <View>
                       <Text style={styles.infoLabel}>Enrolled</Text>
-                      <Text style={styles.infoValue}>{data.enrolled ? `${data.enrolled} students` : '45 students'}</Text>
+                      <Text style={styles.infoValue}>{enrolledCount ? `${enrolledCount} students` : '45 students'}</Text>
                     </View>
                   </View>
                   <View style={styles.infoRow}>
@@ -519,16 +582,42 @@ export default function LearningDetails({ navigation, route }) {
             </View>
           </View>
         </View>
-        <Button onPress={handlePurchase} style={styles.enrollButton}>
-          {data.price === 0 ? 'Enroll Free' : type === 'event' ? 'Register Now' : type === 'workshop' ? 'Book Your Seat' : 'Enroll Now'}
-        </Button>
+        {checkingRegistration ? (
+          <Button disabled style={styles.enrollButton}>
+            Loading...
+          </Button>
+        ) : isRegistered ? (
+          <Button onPress={() => navigation.navigate('MyLearning')} style={styles.enrollButton}>
+            View in My Learning
+          </Button>
+        ) : (
+          <Button onPress={handlePurchase} style={styles.enrollButton}>
+            {data.price === 0 ? 'Enroll Free' : type === 'event' ? 'Register Now' : type === 'workshop' ? 'Book Your Seat' : 'Enroll Now'}
+          </Button>
+        )}
       </View>
+
+      {/* Success Modal */}
+      {successVisible && (
+        <View style={styles.successModalBackdrop}>
+          <View style={styles.successModalCard}>
+            <Text style={styles.successTitle}>🎉 Enrollment Successful!</Text>
+            <Text style={styles.successMsg}>You're enrolled in {data.title}.</Text>
+            <TouchableOpacity style={styles.successBtn} onPress={() => { setSuccessVisible(false); navigation.navigate('MyLearning'); }}>
+              <Text style={styles.successBtnText}>Awesome!</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Profile Completion Prompt */}
       {showCompletionPrompt && (
         <ProfileCompletionPrompt
           feature={type === 'course' ? 'courses' : type === 'event' ? 'events' : 'workshops'}
-          onComplete={() => navigation.navigate('ProfileSetup')}
+          onComplete={() => {
+            setShowCompletionPrompt(false);
+            navigation.navigate('Profile', { screen: 'ProfileEdit' });
+          }}
           onCancel={() => setShowCompletionPrompt(false)}
         />
       )}
@@ -610,6 +699,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginTop: 4,
+  },
+  playButton: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -25,
+    marginTop: -25,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playIcon: {
+    color: '#fff',
+    fontSize: 20,
   },
   content: {
     padding: 16,
@@ -880,5 +986,53 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  successModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 10,
+  },
+  successModalCard: {
+    width: '82%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 18,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  successTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#7C3AED',
+    marginTop: 6,
+  },
+  successMsg: {
+    color: '#475569',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  successBtn: {
+    marginTop: 14,
+    width: '86%',
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+  },
+  successBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    textAlign: 'center',
+    fontSize: 16,
   },
 });

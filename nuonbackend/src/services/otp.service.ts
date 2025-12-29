@@ -11,9 +11,9 @@ const otpRequestLimits = new Map();
 const MAX_OTP_REQUESTS_PER_HOUR = 10;
 const MAX_OTP_REQUESTS_PER_DAY = 50;
 
-// Generate OTP - Fixed to 123456 for testing
+// Generate real OTP for Firebase SMS
 const generateOTP = () => {
-    return '123456';
+    return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 // Check rate limits
@@ -85,23 +85,14 @@ export class OtpService {
                 };
             }
 
-            // Generate real OTP
-            const otp = generateOTP();
-            const expiresAt = Date.now() + (5 * 60 * 1000); // 5 minutes
+            // For Firebase phone authentication, SMS is sent by Firebase client SDK
+            // No need to generate or store OTP on backend
+            console.log(`📱 Firebase phone authentication initiated for ${phoneNumber}`);
 
-            // Store OTP
-            otpStore.set(`phone:${phoneNumber}`, {
-                otp,
-                expiresAt,
-                attempts: 0
-            });
-
-            console.log(`Phone OTP for ${phoneNumber}: ${otp}`);
             return {
                 success: true,
-                message: 'OTP sent successfully to your phone number',
-                expiresIn: 300, // seconds
-                debugOtp: otp // For testing purposes
+                message: 'Phone verification initiated. Please check your SMS for the verification code.',
+                expiresIn: 300, // seconds (Firebase default)
             };
         } catch (error) {
             console.error('Send phone OTP error:', error);
@@ -170,112 +161,139 @@ export class OtpService {
         }
     }
 
-    async verifyOTP(body: { identifier: string; otp: string; type: 'phone' | 'email' }): Promise<any> {
+    async verifyOTP(body: { identifier: string; otp?: string; type: 'phone' | 'email'; firebaseIdToken?: string; provider?: string }): Promise<any> {
         try {
-            const { identifier, otp, type } = body;
+            const { identifier, otp, type, firebaseIdToken, provider } = body;
 
-            console.log('[OTP VERIFY] Incoming:', { identifier, otp, type });
+            console.log('[OTP VERIFY] Incoming:', { identifier, type, provider, hasOtp: !!otp, hasFirebaseToken: !!firebaseIdToken });
 
-            if (!identifier || !otp || !type) {
+            if (!identifier || !type) {
                 return {
                     success: false,
-                    message: 'Identifier, OTP, and type are required'
+                    message: 'Identifier and type are required'
                 };
             }
 
-            const key = `${type}:${identifier}`;
-            console.log('[OTP VERIFY] Looking for key:', key);
-
-            // Get stored OTP data
-            const storedData = otpStore.get(key);
-
-            if (!storedData) {
-                return {
-                    success: false,
-                    message: 'OTP not found or expired. Please request a new one.'
-                };
-            }
-
-            console.log('[OTP VERIFY] Found stored OTP data');
-
-            // Check if OTP has expired
-            if (Date.now() > storedData.expiresAt) {
-                otpStore.delete(key);
-                return {
-                    success: false,
-                    message: 'OTP has expired. Please request a new one.'
-                };
-            }
-
-            // Check attempts (max 3)
-            if (storedData.attempts >= 3) {
-                otpStore.delete(key);
-                return {
-                    success: false,
-                    message: 'Too many failed attempts. Please request a new OTP.'
-                };
-            }
-
-            // Verify OTP
-            if (storedData.otp !== otp) {
-                storedData.attempts += 1;
-                otpStore.set(key, storedData);
-
-                const remainingAttempts = 3 - storedData.attempts;
-                const message = remainingAttempts > 0
-                    ? `Invalid OTP. ${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining.`
-                    : 'Invalid OTP. No attempts remaining.';
-
-                console.log('[OTP VERIFY] OTP mismatch:', { expected: storedData.otp, got: otp, attempts: storedData.attempts });
-
-                return {
-                    success: false,
-                    message
-                };
-            }
-
-            // OTP verified successfully
-            otpStore.delete(key);
-            console.log('[OTP VERIFY] OTP verified for', key);
-
-            // Check if user exists
             let user;
-            if (type === 'phone') {
-                user = await this.prisma.user.findFirst({ where: { phoneNumber: identifier } });
-            } else {
-                user = await this.prisma.user.findFirst({ where: { email: identifier.toLowerCase() } });
-            }
-
             let isNewUser = false;
-            if (!user) {
-                // Get nurse role id
-                const nurseRole = await this.prisma.role.findFirst({ where: { name: 'nurse' } });
-                if (!nurseRole) {
-                    throw new Error('Nurse role not found');
+
+            // Handle phone authentication (Firebase or backend provider)
+            if (type === 'phone') {
+                // For phone, we don't verify OTP server-side since it's handled by Firebase client
+                // Just check if user exists and create if not
+                user = await this.prisma.user.findFirst({ where: { phoneNumber: identifier } });
+                console.log('[OTP VERIFY] Looking for phone user:', identifier, 'Found:', user ? user.id : 'null');
+
+                if (!user) {
+                    // Get nurse role id
+                    const nurseRole = await this.prisma.role.findFirst({ where: { name: 'nurse' } });
+                    if (!nurseRole) {
+                        throw new Error('Nurse role not found');
+                    }
+
+                    // Create new user
+                    user = await this.prisma.user.create({
+                        data: {
+                            name: '', // Empty name - will be filled in profile setup
+                            phoneNumber: identifier,
+                            email: null,
+                            roleId: nurseRole.id,
+                            experience: null,
+                            isProfileComplete: false
+                        }
+                    });
+                    isNewUser = true;
+                    console.log('[OTP VERIFY] Created new phone user:', user.id);
+                }
+            } else {
+                // Email authentication - verify OTP
+                if (!otp) {
+                    return {
+                        success: false,
+                        message: 'OTP is required'
+                    };
                 }
 
-                // Create new user
-                let userData: any;
-                if (type === 'email') {
-                    userData = {
-                        name: identifier.split('@')[0],
-                        email: identifier.toLowerCase(),
-                        roleId: nurseRole.id,
-                        experience: null
-                    };
-                } else {
-                    userData = {
-                        name: null,
-                        phoneNumber: identifier,
-                        roleId: nurseRole.id,
-                        experience: null
+                const key = `${type}:${identifier}`;
+                console.log('[OTP VERIFY] Looking for key:', key);
+
+                // Get stored OTP data
+                const storedData = otpStore.get(key);
+
+                if (!storedData) {
+                    return {
+                        success: false,
+                        message: 'OTP not found or expired. Please request a new one.'
                     };
                 }
 
-                user = await this.prisma.user.create({ data: userData });
-                isNewUser = true;
+                console.log('[OTP VERIFY] Found stored OTP data');
+
+                // Check if OTP has expired
+                if (Date.now() > storedData.expiresAt) {
+                    otpStore.delete(key);
+                    return {
+                        success: false,
+                        message: 'OTP has expired. Please request a new one.'
+                    };
+                }
+
+                // Check attempts (max 3)
+                if (storedData.attempts >= 3) {
+                    otpStore.delete(key);
+                    return {
+                        success: false,
+                        message: 'Too many failed attempts. Please request a new OTP.'
+                    };
+                }
+
+                // Verify OTP
+                if (storedData.otp !== otp) {
+                    storedData.attempts += 1;
+                    otpStore.set(key, storedData);
+
+                    const remainingAttempts = 3 - storedData.attempts;
+                    const message = remainingAttempts > 0
+                        ? `Invalid OTP. ${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining.`
+                        : 'Invalid OTP. No attempts remaining.';
+
+                    console.log('[OTP VERIFY] OTP mismatch:', { expected: storedData.otp, got: otp, attempts: storedData.attempts });
+
+                    return {
+                        success: false,
+                        message
+                    };
+                }
+
+                // OTP verified successfully
+                otpStore.delete(key);
+                console.log('[OTP VERIFY] OTP verified for', key);
+
+                // Check if user exists
+                user = await this.prisma.user.findFirst({ where: { email: identifier.toLowerCase() } });
+                console.log('[OTP VERIFY] Looking for email user:', identifier.toLowerCase(), 'Found:', user ? user.id : 'null');
+
+                if (!user) {
+                    // Get nurse role id
+                    const nurseRole = await this.prisma.role.findFirst({ where: { name: 'nurse' } });
+                    if (!nurseRole) {
+                        throw new Error('Nurse role not found');
+                    }
+
+                    // Create new user
+                    user = await this.prisma.user.create({
+                        data: {
+                            name: '', // Empty name - will be filled in profile setup
+                            email: identifier.toLowerCase(),
+                            roleId: nurseRole.id,
+                            experience: null,
+                            isProfileComplete: false
+                        }
+                    });
+                    isNewUser = true;
+                    console.log('[OTP VERIFY] Created new email user:', user.id);
+                }
             }
-            // Existing users (even with incomplete profiles) go to main dashboard
 
             // Generate JWT tokens
             const accessToken = this.authService.generateAccessToken(user);
@@ -283,14 +301,36 @@ export class OtpService {
 
             return {
                 success: true,
-                message: 'OTP verified successfully',
+                message: 'Authentication successful',
                 user: {
                     id: user.id,
                     name: user.name,
                     email: user.email,
                     phoneNumber: user.phoneNumber,
                     role: user.role,
-                    profilePicture: user.profilePicture
+                    profilePicture: user.profilePicture,
+                    isProfileComplete: user.isProfileComplete,
+                    // Include complete profile data for existing users
+                    specialization: user.specialization,
+                    experience: user.experience,
+                    qualification: user.qualification,
+                    registrationNumber: user.registrationNumber,
+                    department: user.department,
+                    hospital: user.hospital,
+                    bio: user.bio,
+                    city: user.city,
+                    state: user.state,
+                    location: user.location,
+                    organization: user.organization,
+                    highestQualification: user.highestQualification,
+                    currentWorkplace: user.currentWorkplace,
+                    // Mentor-specific fields
+                    isMentor: user.isMentor,
+                    isApproved: user.isApproved,
+                    hourlyRate: user.hourlyRate,
+                    totalSessions: user.totalSessions,
+                    rating: user.rating,
+                    reviewCount: user.reviewCount
                 },
                 token: accessToken,
                 accessToken,
@@ -301,7 +341,7 @@ export class OtpService {
             console.error('Verify OTP error:', error);
             return {
                 success: false,
-                message: 'Error verifying OTP',
+                message: 'Error verifying authentication',
                 error: (error as Error).message
             };
         }

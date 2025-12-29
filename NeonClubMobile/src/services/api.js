@@ -15,7 +15,7 @@ const initialBase = BASE_URL;
 
 const api = axios.create({
   baseURL: initialBase,
-  timeout: CONFIG.TIMEOUT,
+  timeout: 8000, // Reduced timeout for faster responses
 });
 
 // Remove any previously saved overrides to avoid conflicting bases
@@ -32,7 +32,7 @@ export async function setBaseOverride() {
 
 // ultra-light GET cache to reduce repeated loads and perceived latency
 const __getCache = new Map(); // key -> { ts, data }
-const __CACHE_TTL = 10 * 1000; // Reduced to 10s for content updates
+const __CACHE_TTL = 5 * 60 * 1000; // Increased to 5 minutes for better performance
 async function cachedGet(url, config = {}) {
   const key = JSON.stringify([api.defaults.baseURL, url, config.params || null]);
   const now = Date.now();
@@ -48,6 +48,35 @@ async function cachedGet(url, config = {}) {
 export const getBaseURL = () => BASE_URL;
 export const getCurrentBaseURL = () => api.defaults.baseURL;
 
+// Centralized function to construct full URLs for media files
+export const getFullMediaUrl = (path) => {
+  if (!path) return path;
+
+  // If it's already a full URL, check if it contains localhost and replace with IP
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    if (path.includes('localhost')) {
+      return path.replace('localhost', IP_ADDRESS);
+    }
+    return path;
+  }
+
+  // If it's a relative path starting with /uploads, construct full URL
+  if (path.startsWith('/uploads')) {
+    // Use the current API base URL and replace /api with empty string to get media base
+    const mediaBase = getCurrentBaseURL().replace('/api', '');
+    return `${mediaBase}${path}`;
+  }
+
+  // For other relative paths, try to construct URL
+  if (path.startsWith('uploads/')) {
+    const mediaBase = getCurrentBaseURL().replace('/api', '');
+    return `${mediaBase}/${path}`;
+  }
+
+  // Return as-is for other cases
+  return path;
+};
+
 // Expose quick dev helpers on global to tweak base without rebuilding
 if (__DEV__) {
   try {
@@ -60,7 +89,7 @@ if (__DEV__) {
 
 // Explicit connectivity probe that tries known candidates and switches baseURL
 let __lastProbeAt = 0;
-const __PROBE_TTL_MS = 60_000; // Reduced to 1 minute cache to avoid repeated probes
+const __PROBE_TTL_MS = 300_000; // Increased to 5 minutes cache to avoid repeated probes
 export async function probeAndFixBase() {
   const now = Date.now();
   if (now - __lastProbeAt < __PROBE_TTL_MS) {
@@ -70,21 +99,18 @@ export async function probeAndFixBase() {
 
   // Try a set of likely dev candidates (LAN IP, localhost, emulator bridge)
   const candidates = [
-    `http://${IP_ADDRESS}:5000/api`, // LAN IP from centralized config
-    'http://localhost:5000/api', // local dev server (if running on same device/emulator bridge)
-    'http://10.0.2.2:5000/api', // Android emulator host mapping
+    `http://${IP_ADDRESS}:5000`, // LAN IP from centralized config (without /api suffix)
+    'http://localhost:5000', // local dev server (if running on same device/emulator bridge)
+    'http://10.0.2.2:5000', // Android emulator host mapping
   ];
 
   for (const candidate of candidates) {
     try {
-      console.log('Probing candidate:', candidate);
-      const testApi = axios.create({ baseURL: candidate, timeout: 10000 }); // Increased timeout for slow networks
-      await testApi.get('/test'); // Use /test to match backend controller route
-      console.log('Probe successful for:', candidate);
-      api.defaults.baseURL = candidate;
-      return candidate;
+      const testApi = axios.create({ baseURL: candidate, timeout: 2000 }); // Reduced timeout for faster probing
+      await testApi.get('/api/test'); // Use /api/test to match backend controller route
+      api.defaults.baseURL = candidate + '/api'; // Add /api suffix to baseURL
+      return candidate + '/api';
     } catch (e) {
-      console.log('Probe failed for:', candidate, e.message);
       // Silently continue to next candidate
     }
   }
@@ -110,6 +136,9 @@ function genReqId() {
 let __cachedIdToken = null;
 let __cachedAt = 0;
 const TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Flag to prevent multiple simultaneous refresh attempts
+let isRefreshing = false;
 
 api.interceptors.request.use(async (config) => {
   // Comment out Firebase authentication - using only JWT tokens from AsyncStorage
@@ -137,8 +166,8 @@ api.interceptors.request.use(async (config) => {
   */
 
   // Use only JWT tokens from AsyncStorage (MongoDB authentication)
-  // Skip adding Authorization header for registration and public news endpoints
-  if (config.url !== '/register' && !config.url.includes('/dashboard') && !config.url.includes('/news')) {
+  // Skip adding Authorization header for registration, public news endpoints, and refresh
+  if (config.url !== '/register' && !config.url.includes('/dashboard') && !config.url.includes('/news') && config.url !== '/refresh') {
     const token = await AsyncStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -178,28 +207,35 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status === 401) {
-      // Try to refresh token
-      try {
-        const refreshToken = await AsyncStorage.getItem('refreshToken');
-        if (refreshToken) {
-          const refreshResponse = await api.post('/refresh', { refreshToken });
-          const newAccessToken = refreshResponse.data.accessToken;
-          if (newAccessToken) {
-            // Update stored token
-            await AsyncStorage.setItem('token', newAccessToken);
-            // Emit event to update context
-            DeviceEventEmitter.emit('tokenRefreshed', newAccessToken);
-            // Update header for future requests
-            error.config.headers.Authorization = `Bearer ${newAccessToken}`;
-            // Retry the original request
-            return api.request(error.config);
+      // Try to refresh token, but only if not already refreshing
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          const refreshToken = await AsyncStorage.getItem('refreshToken');
+          if (refreshToken) {
+            const refreshResponse = await api.post('/refresh', { refreshToken });
+            const newAccessToken = refreshResponse.data.accessToken;
+            if (newAccessToken) {
+              // Update stored token
+              await AsyncStorage.setItem('token', newAccessToken);
+              // Emit event to update context
+              DeviceEventEmitter.emit('tokenRefreshed', newAccessToken);
+              // Update header for future requests
+              error.config.headers.Authorization = `Bearer ${newAccessToken}`;
+              // Retry the original request
+              isRefreshing = false;
+              return api.request(error.config);
+            }
           }
+        } catch (refreshError) {
+          // Token refresh failed
+        } finally {
+          isRefreshing = false;
         }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
       }
-      // If refresh failed or no refresh token, clear storage
+      // If refresh failed or no refresh token, clear storage and emit event to clear context
       await AsyncStorage.clear();
+      DeviceEventEmitter.emit('tokenCleared');
     }
     return Promise.reject(error);
   }
@@ -215,7 +251,6 @@ export const authAPI = {
   // OTP Authentication
   sendOTP: async (endpoint, data) => {
     try {
-      console.log('Sending OTP to:', api.defaults.baseURL + endpoint, 'with data:', data);
       const response = await api.post(endpoint, data);
       // OTP debug info removed for cleaner console
       return response;
@@ -227,8 +262,10 @@ export const authAPI = {
   verifyOTP: (data) => api.post('/otp/verify', data),
 
   // Profile management
-  updateProfile: (profileData) => api.put('/mentors/mentor/profile', profileData),
+  updateProfile: (profileData) => api.put('/profile', profileData),
 };
+
+export const apiService = authAPI;
 
 // User/Settings APIs
 export const settingsAPI = {
@@ -282,9 +319,12 @@ export const catalogAPI = {
 // Course APIs
 export const courseAPI = {
   getCourses: () => cachedGet('/courses'),
+  getCoursesWithEnrollment: (userId) => cachedGet(`/courses/${userId}`),
   getCourse: (id) => cachedGet(`/courses/${id}`),
   purchaseCourse: (courseId, isFree = false) => api.post(`/courses/${courseId}/purchase`, isFree ? { paymentMethod: 'free', paymentId: 'free', courseId } : { courseId }),
+  processDemoPayment: (userId, courseId) => api.post('/courses/payment/demo', { userId, courseId }),
   getMyCourses: () => cachedGet('/courses/my'),
+  getMyLearning: (userId) => cachedGet(`/courses/my-learning/${userId}`),
 };
 
 // Conference APIs (Learning tab - Academic conferences/webinars)
@@ -337,6 +377,11 @@ export const paymentAPI = {
   getPaymentHistory: () => api.get('/payments/history'),
 };
 
+// Dashboard APIs
+export const dashboardAPI = {
+  getStats: () => api.get('/dashboard/stats'),
+};
+
 // Assessment APIs
 export const assessmentAPI = {
   getAssessments: () => api.get('/assessments'),
@@ -383,19 +428,27 @@ export const nccAPI = {
 export const newsAPI = {
   getLatest: async () => {
     try {
-      const res = await api.get('/dashboard/news');
-      return { data: Array.isArray(res?.data?.news) ? res.data.news : (Array.isArray(res?.data) ? res.data : []) };
+      const res = await api.get('/news');
+      let data = res?.data;
+      if (data?.data?.news) data = data.data;
+      const list = Array.isArray(data?.news) ? data.news : (Array.isArray(data) ? data : []);
+      return { data: list };
     } catch {}
     try {
-      const res = await api.get('/news');
-      return { data: Array.isArray(res?.data?.news) ? res.data.news : (Array.isArray(res?.data) ? res.data : []) };
+      const res = await api.get('/dashboard/news');
+      let data = res?.data;
+      if (data?.data?.news) data = data.data;
+      const list = Array.isArray(data?.news) ? data.news : (Array.isArray(data) ? data : []);
+      return { data: list };
     } catch {}
     return { data: [] };
   },
   getFeatured: async () => {
     try {
       const res = await api.get('/dashboard/news/featured');
-      const list = Array.isArray(res?.data?.news) ? res.data.news : (Array.isArray(res?.data) ? res.data : []);
+      let data = res?.data;
+      if (data?.data?.news) data = data.data;
+      const list = Array.isArray(data?.news) ? data.news : (Array.isArray(data) ? data : []);
       return { data: list };
     } catch {
       return { data: [] };
@@ -404,7 +457,10 @@ export const newsAPI = {
   getAllNews: async (params = {}) => {
     try {
       const res = await api.get('/news', { params });
-      return { data: Array.isArray(res?.data?.news) ? res.data.news : (Array.isArray(res?.data) ? res.data : []) };
+      let data = res?.data;
+      if (data?.data?.news) data = data.data;
+      const list = Array.isArray(data?.news) ? data.news : (Array.isArray(data) ? data : []);
+      return { data: list };
     } catch {
       return { data: [] };
     }
@@ -420,7 +476,6 @@ export const mentorAPI = {
       let list = Array.isArray(res?.data?.mentors) ? res.data.mentors : (Array.isArray(res?.data) ? res.data : []);
       return { data: list };
     } catch (error) {
-      console.error('Error fetching mentors:', error);
       return { data: [] };
     }
   },
@@ -441,6 +496,16 @@ export const mentorAPI = {
 export const notificationsAPI = {
   list: (userId) => api.get('/notifications', { params: userId ? { userId } : undefined }),
   create: (payload) => api.post('/notifications', payload),
+};
+
+// Engage APIs
+export const engageAPI = {
+  getActivities: (params = {}) => cachedGet('/engage/activities', { params }),
+  getActivity: (id) => cachedGet(`/engage/activities/${id}`),
+  register: (id, data) => api.post(`/engage/activities/${id}/register`, data),
+  getMyRegistrations: () => api.get('/engage/my-registrations'),
+  submitReview: (id, data) => api.post(`/engage/activities/${id}/review`, data),
+  search: (query, params = {}) => cachedGet('/engage/activities/search', { params: { query, ...params } }),
 };
 
 // Activities feed APIs

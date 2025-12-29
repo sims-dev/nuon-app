@@ -11,7 +11,7 @@ export default class ErrorBoundary extends React.Component {
     return { hasError: true, error };
   }
   componentDidCatch(error, info) {
-    // eslint-disable-next-line no-console
+     
     console.log('[ErrorBoundary]', error, info);
     try {
       activitiesAPI.create({

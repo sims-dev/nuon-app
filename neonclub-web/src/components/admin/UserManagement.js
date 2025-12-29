@@ -40,7 +40,7 @@ const UserManagement = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phone: '',
+    phoneNumber: '',
     role: 'mentor',
     password: '',
     specialization: '',
@@ -102,7 +102,7 @@ const UserManagement = () => {
       console.log('📤 Submit Data:', submitData);
 
       const url = editingUser
-        ? `/admin/users/${editingUser._id}`
+        ? `/admin/users/${editingUser.id}`
         : `/admin/users`;
 
       const method = editingUser ? 'put' : 'post';
@@ -156,7 +156,7 @@ const UserManagement = () => {
     setFormData({
       name: user.name,
       email: user.email,
-      phone: user.phoneNumber || user.phone,
+      phoneNumber: user.phoneNumber || user.phone,
       role: user.role,
       password: '',
       specialization: user.specialization || '',
@@ -166,7 +166,7 @@ const UserManagement = () => {
       hospital: user.hospital || '',
       bio: user.bio || '',
       profileImage: null,
-      hourlyRate: user.hourlyRate ? user.hourlyRate.replace('₹', '') : '',
+      hourlyRate: user.hourlyRate ? user.hourlyRate.toString().replace('₹', '') : '',
       availability: user.availability || 'available'
     });
     setOpenDialog(true);
@@ -176,7 +176,7 @@ const UserManagement = () => {
     setFormData({
       name: '',
       email: '',
-      phone: '',
+      phoneNumber: '',
       role: 'mentor',
       password: '',
       specialization: '',
@@ -288,7 +288,7 @@ const UserManagement = () => {
           </TableHead>
           <TableBody>
             {users.map((user) => (
-              <TableRow key={user._id} hover>
+               <TableRow key={user.id} hover>
                 <TableCell>
                   <Box display="flex" alignItems="center">
                     {getRoleIcon(user.role)}
@@ -329,8 +329,8 @@ const UserManagement = () => {
                   >
                     <Edit />
                   </IconButton>
-                  <IconButton 
-                    onClick={() => handleDelete(user._id)}
+                  <IconButton
+                    onClick={() => handleDelete(user.id)}
                     color="error"
                     size="small"
                   >
@@ -372,8 +372,8 @@ const UserManagement = () => {
             <TextField
               fullWidth
               label="Phone"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              value={formData.phoneNumber}
+              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
               margin="normal"
               required
             />
