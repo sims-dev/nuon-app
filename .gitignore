@@ -10,6 +10,7 @@ node_modules/
 
 # Sensitive keys
 config/service-account-key.json
+nuonbackend/src/config/*-firebase-adminsdk-*.json
 
 # Logs
 logs/
