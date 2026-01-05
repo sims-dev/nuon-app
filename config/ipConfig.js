@@ -1,0 +1,1 @@
+const MOBILE_IP = '192.168.0.116'; // Updated IP for mobile devices

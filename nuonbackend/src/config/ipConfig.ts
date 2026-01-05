@@ -1,11 +1,9 @@
 // Centralized IP configuration
-export const IP_ADDRESS = process.env.IP_ADDRESS || '192.168.0.4';
+export const IP_ADDRESS = process.env.IP_ADDRESS || '192.168.0.116';
 
 // Common IP addresses for development
 export const ALLOWED_IPS = [
     '192.168.0.116',
-    '192.168.0.209',
-    '192.168.0.4',
     'localhost',
     '127.0.0.1'
 ];

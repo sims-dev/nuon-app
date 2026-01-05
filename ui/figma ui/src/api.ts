@@ -1,5 +1,5 @@
 // API service for the UI app
-const API_BASE_URL = 'http://192.168.0.4:5000/api'; // Adjust IP as needed
+const API_BASE_URL = 'http://192.168.29.81:5000/api'; // Adjust IP as needed
 
 interface ApiResponse<T> extends Record<string, any> {
   success: boolean;

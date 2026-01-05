@@ -15,7 +15,7 @@ const initialBase = BASE_URL;
 
 const api = axios.create({
   baseURL: initialBase,
-  timeout: 8000, // Reduced timeout for faster responses
+  timeout: 10000, // Increased timeout to 10 seconds for better handling of latency
 });
 
 // Remove any previously saved overrides to avoid conflicting bases

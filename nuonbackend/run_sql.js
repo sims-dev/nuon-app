@@ -253,56 +253,56 @@ async function runSQL() {
       console.log('Nurse role already exists in roles table');
     }
 
-    // Update media URLs from 192.168.0.4 to localhost
-    console.log('Updating media URLs from 192.168.0.4 to localhost...');
+    // Update media URLs from 192.168.0.4 to 192.168.29.81
+    console.log('Updating media URLs from 192.168.0.4 to 192.168.29.81...');
 
     // Users table
-    await connection.execute("UPDATE `sims_nuonhub`.`users` SET `profilePicture` = REPLACE(`profilePicture`, '192.168.0.4', 'localhost') WHERE `profilePicture` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`users` SET `profilePicture` = REPLACE(`profilePicture`, '192.168.0.4', '192.168.29.81') WHERE `profilePicture` LIKE '%192.168.0.4%'");
     console.log('Updated users profilePicture URLs');
 
     // News table
-    await connection.execute("UPDATE `sims_nuonhub`.`news` SET `images` = REPLACE(`images`, '192.168.0.4', 'localhost') WHERE `images` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`news` SET `videos` = REPLACE(`videos`, '192.168.0.4', 'localhost') WHERE `videos` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`news` SET `images` = REPLACE(`images`, '192.168.0.4', '192.168.29.81') WHERE `images` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`news` SET `videos` = REPLACE(`videos`, '192.168.0.4', '192.168.29.81') WHERE `videos` LIKE '%192.168.0.4%'");
     console.log('Updated news images and videos URLs');
 
     // Courses table
-    await connection.execute("UPDATE `sims_nuonhub`.`courses` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', 'localhost') WHERE `thumbnail` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`courses` SET `image` = REPLACE(`image`, '192.168.0.4', 'localhost') WHERE `image` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`courses` SET `video_url` = REPLACE(`video_url`, '192.168.0.4', 'localhost') WHERE `video_url` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`courses` SET `video_thumbnail` = REPLACE(`video_thumbnail`, '192.168.0.4', 'localhost') WHERE `video_thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`courses` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`courses` SET `image` = REPLACE(`image`, '192.168.0.4', '192.168.29.81') WHERE `image` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`courses` SET `video_url` = REPLACE(`video_url`, '192.168.0.4', '192.168.29.81') WHERE `video_url` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`courses` SET `video_thumbnail` = REPLACE(`video_thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `video_thumbnail` LIKE '%192.168.0.4%'");
     console.log('Updated courses media URLs');
 
     // Events table
-    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `image` = REPLACE(`image`, '192.168.0.4', 'localhost') WHERE `image` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `imageUrl` = REPLACE(`imageUrl`, '192.168.0.4', 'localhost') WHERE `imageUrl` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', 'localhost') WHERE `thumbnail` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `video_url` = REPLACE(`video_url`, '192.168.0.4', 'localhost') WHERE `video_url` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `video_thumbnail` = REPLACE(`video_thumbnail`, '192.168.0.4', 'localhost') WHERE `video_thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `image` = REPLACE(`image`, '192.168.0.4', '192.168.29.81') WHERE `image` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `imageUrl` = REPLACE(`imageUrl`, '192.168.0.4', '192.168.29.81') WHERE `imageUrl` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `video_url` = REPLACE(`video_url`, '192.168.0.4', '192.168.29.81') WHERE `video_url` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`events` SET `video_thumbnail` = REPLACE(`video_thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `video_thumbnail` LIKE '%192.168.0.4%'");
     console.log('Updated events media URLs');
 
     // Workshops table
-    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `coverImage` = REPLACE(`coverImage`, '192.168.0.4', 'localhost') WHERE `coverImage` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `image` = REPLACE(`image`, '192.168.0.4', 'localhost') WHERE `image` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', 'localhost') WHERE `thumbnail` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `video_url` = REPLACE(`video_url`, '192.168.0.4', 'localhost') WHERE `video_url` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `video_thumbnail` = REPLACE(`video_thumbnail`, '192.168.0.4', 'localhost') WHERE `video_thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `coverImage` = REPLACE(`coverImage`, '192.168.0.4', '192.168.29.81') WHERE `coverImage` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `image` = REPLACE(`image`, '192.168.0.4', '192.168.29.81') WHERE `image` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `video_url` = REPLACE(`video_url`, '192.168.0.4', '192.168.29.81') WHERE `video_url` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`workshops` SET `video_thumbnail` = REPLACE(`video_thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `video_thumbnail` LIKE '%192.168.0.4%'");
     console.log('Updated workshops media URLs');
 
     // Conferences table
-    await connection.execute("UPDATE `sims_nuonhub`.`conferences` SET `imageUrl` = REPLACE(`imageUrl`, '192.168.0.4', 'localhost') WHERE `imageUrl` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`conferences` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', 'localhost') WHERE `thumbnail` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`conferences` SET `videoUrl` = REPLACE(`videoUrl`, '192.168.0.4', 'localhost') WHERE `videoUrl` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`conferences` SET `imageUrl` = REPLACE(`imageUrl`, '192.168.0.4', '192.168.29.81') WHERE `imageUrl` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`conferences` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`conferences` SET `videoUrl` = REPLACE(`videoUrl`, '192.168.0.4', '192.168.29.81') WHERE `videoUrl` LIKE '%192.168.0.4%'");
     console.log('Updated conferences media URLs');
 
     // Engage activities table
-    await connection.execute("UPDATE `sims_nuonhub`.`engage_activities` SET `image` = REPLACE(`image`, '192.168.0.4', 'localhost') WHERE `image` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`engage_activities` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', 'localhost') WHERE `thumbnail` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`engage_activities` SET `video_url` = REPLACE(`video_url`, '192.168.0.4', 'localhost') WHERE `video_url` LIKE '%192.168.0.4%'");
-    await connection.execute("UPDATE `sims_nuonhub`.`engage_activities` SET `video_thumbnail` = REPLACE(`video_thumbnail`, '192.168.0.4', 'localhost') WHERE `video_thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`engage_activities` SET `image` = REPLACE(`image`, '192.168.0.4', '192.168.29.81') WHERE `image` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`engage_activities` SET `thumbnail` = REPLACE(`thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `thumbnail` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`engage_activities` SET `video_url` = REPLACE(`video_url`, '192.168.0.4', '192.168.29.81') WHERE `video_url` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`engage_activities` SET `video_thumbnail` = REPLACE(`video_thumbnail`, '192.168.0.4', '192.168.29.81') WHERE `video_thumbnail` LIKE '%192.168.0.4%'");
     console.log('Updated engage_activities media URLs');
 
     // Catalog items table
-    await connection.execute("UPDATE `sims_nuonhub`.`catalog_items` SET `imageUrl` = REPLACE(`imageUrl`, '192.168.0.4', 'localhost') WHERE `imageUrl` LIKE '%192.168.0.4%'");
+    await connection.execute("UPDATE `sims_nuonhub`.`catalog_items` SET `imageUrl` = REPLACE(`imageUrl`, '192.168.0.4', '192.168.29.81') WHERE `imageUrl` LIKE '%192.168.0.4%'");
     console.log('Updated catalog_items image URLs');
 
     console.log('All media URLs updated successfully');

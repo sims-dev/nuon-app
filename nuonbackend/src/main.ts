@@ -33,13 +33,8 @@ async function bootstrap(): Promise<void> {
         `http://localhost:5000`,
         `http://192.168.0.116:3000`,
         `http://192.168.0.116:3001`,
-        `http://192.168.0.3:3000`,
-        `http://192.168.0.3:5000`,
-        `http://192.168.0.4:3000`,
-        `http://192.168.0.4:5000`,
-        `http://192.168.0.209:3000`,
-        `http://192.168.0.209:3001`,
-        `http://192.168.0.209:5000`,
+        `http://192.168.0.116:5000`,
+        `http://192.168.29.81:5000`, // Added for external access
     ];
 
     app.enableCors({
@@ -84,7 +79,7 @@ async function bootstrap(): Promise<void> {
     const server = app.getHttpServer();
     initializeSocket(server);
 
-    await app.listen(PORT, '0.0.0.0');
+    await app.listen(PORT, '0.0.0.0'); // Bind to 0.0.0.0 for external access
     console.log(`Server (with sockets) running on port ${PORT} and listening on 0.0.0.0`);
     console.log(`Server accessible at: http://localhost:${PORT} and http://${IP_ADDRESS}:${PORT}`);
 

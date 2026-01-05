@@ -23,6 +23,8 @@ console.log('Resolved IP_ADDRESS:', IP_ADDRESS);
 // Ensure the mobile app talks to the backend on port 5000 and uses the /api prefix
 let DEV_BASE = __DEV__ ? (ENV_API_BASE_URL || `http://${IP_ADDRESS}:5000/api`) : 'https://your-production-api.com/api';
 
+const API_BASE_URL = 'http://192.168.0.116:5000/api';
+
 export const CONFIG = {
   // For dev, always use the LAN IP above. For production, use your deployed API URL.
   API_BASE_URL: __DEV__ ? DEV_BASE : 'https://your-app.herokuapp.com/api',

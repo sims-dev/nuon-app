@@ -17,7 +17,7 @@ npm install
 
 ### 2. Configure API Connection
 1. Open `src/utils/config.js`
-2. Replace `192.168.1.100` with your actual local network IP address
+2. Replace `192.168.0.116` with your actual local network IP address
 3. To find your IP:
    - Windows: Run `ipconfig` in Command Prompt
    - Mac/Linux: Run `ifconfig` in Terminal

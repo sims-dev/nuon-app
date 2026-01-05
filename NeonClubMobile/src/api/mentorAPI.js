@@ -2,7 +2,7 @@ import { IP_ADDRESS } from '../config/ipConfig';
 import api from '../services/api';
 
 // Fallback base URL (uses backend port 5000 and global /api prefix)
-const FALLBACK_BASE_URL = `http://${IP_ADDRESS || '192.168.0.209'}:5000/api`;
+const FALLBACK_BASE_URL = `http://${IP_ADDRESS || '192.168.0.116'}:5000/api`;
 
 // Mock data for offline mode
 const mockMentors = [

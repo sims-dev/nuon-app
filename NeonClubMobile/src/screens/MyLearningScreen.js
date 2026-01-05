@@ -195,9 +195,23 @@ const MyLearningScreen = ({ navigation, route }) => {
     return unsubscribe;
   }, [navigation]);
 
-
-
-
+  useEffect(() => {
+    const addRegisteredContent = async () => {
+      try {
+        const registeredContent = await AsyncStorage.getItem('registeredContent');
+        if (registeredContent) {
+          const parsedContent = JSON.parse(registeredContent);
+          setEnrolledCourses((prev) => [...prev, ...parsedContent.courses || []]);
+          setRegisteredConferences((prev) => [...prev, ...parsedContent.conferences || []]);
+          setRegisteredEvents((prev) => [...prev, ...parsedContent.events || []]);
+          setRegisteredWorkshops((prev) => [...prev, ...parsedContent.workshops || []]);
+        }
+      } catch (error) {
+        console.error('Error adding registered content:', error);
+      }
+    };
+    addRegisteredContent();
+  }, []);
 
   const upcomingConferences = useMemo(() => (registeredConferences || []).filter(e => e.status === 'upcoming'), [registeredConferences]);
   const completedConferences = useMemo(() => (registeredConferences || []).filter(e => e.status === 'completed'), [registeredConferences]);

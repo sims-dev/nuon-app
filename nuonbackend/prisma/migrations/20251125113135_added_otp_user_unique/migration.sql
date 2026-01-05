@@ -36,6 +36,6 @@ ALTER TABLE `users` MODIFY
     MODIFY `mobile_verified` BIT(1) NOT
 NULL DEFAULT false;
 
--- CreateIndex
-CREATE UNIQUE INDEX `otp_user_id_key` ON
-`otp`(`user_id`);
+-- Removed the conflicting unique index creation for `otp_user_id_key` to avoid duplication errors.
+-- CREATE UNIQUE INDEX `otp_user_id_key` ON
+-- `otp`(`user_id`);

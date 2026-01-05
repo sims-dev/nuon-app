@@ -85,14 +85,15 @@ export class OtpService {
                 };
             }
 
-            // For Firebase phone authentication, SMS is sent by Firebase client SDK
-            // No need to generate or store OTP on backend
-            console.log(`📱 Firebase phone authentication initiated for ${phoneNumber}`);
+            // Generate and return dummy OTP
+            const dummyOTP = '123456';
+            console.log(`📱 Dummy OTP generated for ${phoneNumber}: ${dummyOTP}`);
 
             return {
                 success: true,
-                message: 'Phone verification initiated. Please check your SMS for the verification code.',
-                expiresIn: 300, // seconds (Firebase default)
+                message: 'OTP sent successfully',
+                otp: dummyOTP,
+                expiresIn: 300 // seconds
             };
         } catch (error) {
             console.error('Send phone OTP error:', error);

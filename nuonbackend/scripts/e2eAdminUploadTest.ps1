@@ -3,7 +3,7 @@
 # This script logs in with the default admin credentials, uploads small placeholder files
 # to the admin engage create endpoint, lists saved files in uploads/, and fetches activities.
 
-# Ensure backend is running and accessible at http://192.168.0.209:5000
+# Ensure backend is running and accessible at http://192.168.29.81:5000
 
 # Create tmp folder and small placeholder files
 if (!(Test-Path -Path ..\tmp)) { New-Item -ItemType Directory -Path ..\tmp | Out-Null }
@@ -14,7 +14,7 @@ Set-Content -Path ..\tmp\sample-video.mp4 -Value 'placeholder-video' -Encoding A
 $loginBody = @{ email='admin@nuonhub.com'; password='admin@123' } | ConvertTo-Json
 Write-Host 'Logging in as admin...'
 try {
-    $login = Invoke-RestMethod -Method Post -Uri 'http://192.168.0.209:5000/api/auth/login' -ContentType 'application/json' -Body $loginBody -ErrorAction Stop
+    $login = Invoke-RestMethod -Method Post -Uri 'http://192.168.29.81:5000/api/auth/login' -ContentType 'application/json' -Body $loginBody -ErrorAction Stop
 } catch {
     Write-Host 'Login failed:' $_.Exception.Message; exit 3
 }
@@ -36,7 +36,7 @@ $form = @{
 }
 Write-Host 'Uploading activity with files...'
 try {
-    $response = Invoke-RestMethod -Uri 'http://192.168.0.209:5000/api/admin/engage/activities' -Method Post -Headers @{ Authorization = "Bearer $token" } -Form $form -ErrorAction Stop
+    $response = Invoke-RestMethod -Uri 'http://192.168.29.81:5000/api/admin/engage/activities' -Method Post -Headers @{ Authorization = "Bearer $token" } -Form $form -ErrorAction Stop
 } catch {
     Write-Host 'Upload failed:' $_.Exception.Message; exit 4
 }
@@ -53,7 +53,7 @@ else { Write-Host 'uploads folder not found at' $uploadsPath }
 # Fetch public activities
 Write-Host "\nFetching /api/engage/activities..."
 try {
-    $activities = Invoke-RestMethod -Method Get -Uri 'http://192.168.0.209:5000/api/engage/activities?limit=10' -ErrorAction Stop
+    $activities = Invoke-RestMethod -Method Get -Uri 'http://192.168.29.81:5000/api/engage/activities?limit=10' -ErrorAction Stop
     $activities | ConvertTo-Json -Depth 5
 } catch {
     Write-Host 'Fetch activities failed:' $_.Exception.Message; exit 5
